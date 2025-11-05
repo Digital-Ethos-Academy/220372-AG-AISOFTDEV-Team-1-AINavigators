@@ -1,0 +1,228 @@
+[
+  {
+    "id": "US001",
+    "user_story": "As Agile Alex, I want to create a new project and define its timeline using 2-week sprints, so that I can accurately plan project duration and resource needs from the outset.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I am logged in as Agile Alex",
+      "When I navigate to the 'Projects' section and click 'Create New Project'",
+      "And I enter 'Project Alpha', start date '2023-01-01', and end date '2023-06-30'",
+      "Then the system should automatically calculate and display the total number of 2-week sprints (e.g., 13 sprints)",
+      "And I should be able to confirm the project creation."
+    ]
+  },
+  {
+    "id": "US002",
+    "user_story": "As Agile Alex, I want to add an existing employee to my project with their specific role, LCAT, and total funded hours, so that I can clearly define the scope of work and budget for each team member on the project.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I am managing 'Project Alpha'",
+      "When I select 'Add Employee' and choose 'John Doe' from the centralized employee pool",
+      "And I specify 'Developer' as his role, 'Senior Developer' as his LCAT, and '880' as his total funded hours for Project Alpha",
+      "Then John Doe should appear in the project's allocation grid with his details",
+      "And the system should track his remaining funded hours for Project Alpha."
+    ]
+  },
+  {
+    "id": "US003",
+    "user_story": "As Agile Alex, I want to allocate hours for an employee across different months/sprints within a project, so that I can precisely plan their workload and instantly see their full-time equivalent (FTE) percentage.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given John Doe is assigned to 'Project Alpha' with 880 funded hours",
+      "And the system has calculated 168 standard full-time hours for January",
+      "When I input '160' hours for John Doe in the January column of the allocation grid",
+      "Then the system should automatically display '95.24%' as his FTE for January",
+      "And his remaining funded hours for Project Alpha should update to '720'."
+    ]
+  },
+  {
+    "id": "US004",
+    "user_story": "As Agile Alex, I want to be immediately warned if I try to over-allocate an employee beyond their monthly capacity across all projects, so that I can prevent burnout and scheduling conflicts.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given John Doe is allocated 80 hours to 'Project Alpha' in February",
+      "And John Doe is also allocated 100 hours to 'Project Beta' in February",
+      "And the standard monthly full-time hours for February are 160",
+      "When I attempt to allocate an additional 10 hours to John Doe for 'Project Gamma' in February",
+      "Then the system should display a visual warning (e.g., red highlight) and a message indicating John Doe would be over-allocated (190/160 hours)",
+      "And the system should prevent me from saving the allocation without explicit override."
+    ]
+  },
+  {
+    "id": "US005",
+    "user_story": "As Compliance Chris, I want to ensure that hour allocations for an employee on a project do not exceed their total funded hours for that specific project, so that I can maintain budget compliance and accurate billing.",
+    "persona": "Compliance Chris",
+    "acceptance_criteria": [
+      "Given John Doe is assigned to 'Project Alpha' with a total of 880 funded hours",
+      "And John Doe has already been allocated 870 hours across previous months for Project Alpha",
+      "When I attempt to allocate '20' hours for John Doe in the current month for Project Alpha",
+      "Then the system should display a warning that the allocation exceeds the remaining funded hours (10 hours remaining, 20 requested)",
+      "And the system should prevent me from saving the allocation without explicit override."
+    ]
+  },
+  {
+    "id": "US006",
+    "user_story": "As Agile Alex, I want to record an employee's planned time-off (e.g., vacation), so that their monthly capacity is accurately adjusted, leading to more realistic allocation planning.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given the standard full-time hours for July are 176",
+      "When I navigate to John Doe's profile and add a vacation from 'July 15th' to 'July 19th' (5 working days)",
+      "Then the system should automatically reduce John Doe's available full-time hours for July (e.g., 176 - 40 = 136 hours)",
+      "And this adjusted capacity should be reflected in the allocation grid for July for all projects he is assigned to."
+    ]
+  },
+  {
+    "id": "US007",
+    "user_story": "As Agile Alex, I want the AI agent to suggest optimal hour distributions for my project team, so that I can quickly get data-driven recommendations to efficiently staff my project based on skills, availability, and project phases.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I have defined project phases and assigned employees with skills to 'Project Alpha'",
+      "When I click 'Get AI Allocation Suggestions' for Project Alpha",
+      "Then the system should present a proposed allocation of hours for each employee across sprints/months",
+      "And the suggestions should consider employee skills, availability, and current workload."
+    ]
+  },
+  {
+    "id": "US008",
+    "user_story": "As Agile Alex, I want to review potential over-allocation conflicts identified by the AI agent, so that I can proactively address staffing issues before they impact project delivery or team morale.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given John Doe is currently over-allocated by 20 hours in October across 'Project Alpha' and 'Project Beta'",
+      "When I view the 'Conflicts' section or receive an in-app notification",
+      "Then the system should clearly highlight John Doe's over-allocation for October",
+      "And the system should suggest potential resolutions, such as 'Reduce Project Alpha allocation by 20 hours' or 'Propose alternative employee for Project Beta'."
+    ]
+  },
+  {
+    "id": "US009",
+    "user_story": "As Agile Alex, I want to ask a natural language question about an employee's allocation, so that I can quickly retrieve specific information without manually searching through reports or grids.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I am on the StaffAlloc dashboard",
+      "When I type 'How many hours does John Doe have left on Project Alpha?' into the chat interface",
+      "Then the system should respond with the current remaining funded hours for John Doe on Project Alpha."
+    ]
+  },
+  {
+    "id": "US010",
+    "user_story": "As Strategic Sarah, I want to ask a natural language question about resource availability by role/LCAT, so that I can quickly identify potential candidates for new projects or to fill gaps.",
+    "persona": "Strategic Sarah",
+    "acceptance_criteria": [
+      "Given I am on the StaffAlloc dashboard",
+      "When I type 'Who is available for 50% FTE in March with a 'Developer' LCAT?' into the chat interface",
+      "Then the system should list all employees matching the criteria, along with their current March allocations and remaining capacity."
+    ]
+  },
+  {
+    "id": "US011",
+    "user_story": "As Strategic Sarah, I want to view a high-level dashboard of all projects and their aggregated staffing data, so that I can gain a holistic understanding of departmental capacity, utilization, and potential risks across the entire portfolio.",
+    "persona": "Strategic Sarah",
+    "acceptance_criteria": [
+      "Given I am logged in as Strategic Sarah",
+      "When I navigate to the 'Organizational Roll-up Dashboard'",
+      "Then I should see aggregated data for total allocated hours, remaining funded hours, and overall resource utilization by role/LCAT across all active projects",
+      "And I should see visual indicators for potential cross-project over/under-allocations at a glance."
+    ]
+  },
+  {
+    "id": "US012",
+    "user_story": "As Agile Alex, I want to view a consolidated dashboard for a specific employee, so that I can understand their total workload across all assigned projects and identify potential over-allocation or under-utilization.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given John Doe is assigned to 'Project Alpha' and 'Project Beta'",
+      "When I navigate to John Doe's 'Employee Utilization Dashboard'",
+      "Then I should see a month-by-month breakdown of his allocated hours and FTE percentages for each project",
+      "And I should see his total combined FTE percentage for each month, with visual warnings for over 100% allocation."
+    ]
+  },
+  {
+    "id": "US013",
+    "user_story": "As Compliance Chris, I want to generate a report summarizing resource allocation by Role and LCAT across all projects, so that I can enable strategic resource planning, identify skill gaps, and ensure compliance with contractual LCAT requirements.",
+    "persona": "Compliance Chris",
+    "acceptance_criteria": [
+      "Given I am logged in as Compliance Chris",
+      "When I navigate to 'Reports' and select 'Role/LCAT Breakdown' for the current quarter",
+      "Then the system should display a report showing total allocated hours and FTEs for each Role and LCAT across all projects",
+      "And I should be able to filter this report by department or specific projects."
+    ]
+  },
+  {
+    "id": "US014",
+    "user_story": "As Agile Alex, I want to input and adjust hours in a familiar spreadsheet-like grid, so that I can quickly and intuitively manage allocations while receiving instant feedback on validity and FTE calculations.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I am on the project's 'Hours Allocation' screen",
+      "When I click into a cell to enter hours for an employee in a specific month",
+      "Then the interface should behave like a spreadsheet, allowing easy navigation and data entry",
+      "And as I enter hours, the corresponding FTE percentage and allocation status (e.g., color-coding) should update in real-time."
+    ]
+  },
+  {
+    "id": "US015",
+    "user_story": "As Compliance Chris, I want to define and manage a master list of Roles and LCATs for the organization, so that I can ensure standardized terminology and accurate classification of resources for billing and reporting.",
+    "persona": "Compliance Chris",
+    "acceptance_criteria": [
+      "Given I am logged in as Compliance Chris with appropriate permissions",
+      "When I navigate to 'System Configuration' and select 'Roles & LCATs'",
+      "Then I should see a list of existing Roles and LCATs",
+      "And I should be able to add a new Role (e.g., 'DevOps Engineer') and a new LCAT (e.g., 'Principal Software Engineer')",
+      "And these new entries should be available for selection when creating employee profiles or assigning to projects."
+    ]
+  },
+  {
+    "id": "US016",
+    "user_story": "As Strategic Sarah, I want the AI agent to analyze and suggest adjustments for workload balancing across the department, so that I can prevent employee burnout, maximize productivity, and ensure equitable distribution of tasks.",
+    "persona": "Strategic Sarah",
+    "acceptance_criteria": [
+      "Given there are employees with significantly different FTE allocations across the department for the upcoming quarter",
+      "When I activate the 'Smart Workload Balancing' feature from the Organizational Dashboard",
+      "Then the AI agent should identify employees with high and low utilization",
+      "And it should suggest specific re-allocations or shifts in project assignments to balance workloads more evenly, considering skills and project needs."
+    ]
+  },
+  {
+    "id": "US017",
+    "user_story": "As Strategic Sarah, I want to view AI-generated predictions for future resource shortages or surpluses, so that I can proactively plan for hiring, training, or re-assignment to meet future demand or optimize existing capacity.",
+    "persona": "Strategic Sarah",
+    "acceptance_criteria": [
+      "Given current project pipeline and employee availability data",
+      "When I access the 'Predictive Resource Insights' dashboard",
+      "Then the system should display a forecast indicating potential shortages (e.g., 'Need 2 more Senior Developers in Q3') or surpluses (e.g., '1 Junior QA Engineer available 50% in Q4') by Role/LCAT",
+      "And these predictions should be based on projected project needs and current resource allocations."
+    ]
+  },
+  {
+    "id": "US018",
+    "user_story": "As Agile Alex, I want to update the status of my project and archive it upon completion, so that I can maintain an accurate portfolio overview and retain historical data without cluttering active views.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given 'Project Alpha' is currently 'In Progress'",
+      "When I change its status to 'Completed' and then select 'Archive Project'",
+      "Then 'Project Alpha' should no longer appear in my active project list",
+      "And I should still be able to access its historical data and reports from an 'Archived Projects' view."
+    ]
+  },
+  {
+    "id": "US019",
+    "user_story": "As Compliance Chris, I want to manage the global holiday calendar, so that I can ensure accurate calculation of monthly full-time hours for all employees, impacting allocation capacity.",
+    "persona": "Compliance Chris",
+    "acceptance_criteria": [
+      "Given I am logged in as Compliance Chris with Administrator privileges",
+      "When I navigate to 'System Configuration' and select 'Holiday Calendar'",
+      "Then I should see a list of configured holidays for the year",
+      "And I should be able to add a new holiday (e.g., 'Company Picnic Day' on '2024-08-15')",
+      "And this new holiday should automatically reduce the calculated full-time hours for August for all employees."
+    ]
+  },
+  {
+    "id": "US020",
+    "user_story": "As Agile Alex, I want the AI agent to recommend employees with specific skills for a new project role, so that I can quickly identify the best-fit internal resources based on their expertise, availability, and current workload.",
+    "persona": "Agile Alex",
+    "acceptance_criteria": [
+      "Given I am staffing a new 'Cybersecurity Analyst' role for 'Project Gamma'",
+      "When I specify required skills (e.g., 'Penetration Testing', 'AWS Security') and desired FTE (e.g., 100%)",
+      "Then the AI agent should recommend employees from the central pool who possess those skills, are available, and have capacity",
+      "And the recommendations should be ranked by suitability, showing their current workload."
+    ]
+  }
+]
