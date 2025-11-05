@@ -1,0 +1,116 @@
+# Core Dependencies for AI-Driven Software Engineering Capstone Project
+# TripSplit: Group Travel Expense Manager
+
+# ============================================================================
+# LLM Provider SDKs
+# ============================================================================
+# OpenAI API client (for GPT models)
+openai>=1.0.0
+
+# Google Generative AI (for Gemini models)
+google-genai>=0.3.0
+
+# Anthropic API client (for Claude models)
+anthropic>=0.18.0
+
+# Hugging Face Inference API
+huggingface-hub>=0.20.0
+
+# ============================================================================
+# Environment & Configuration
+# ============================================================================
+# Load environment variables from .env file
+python-dotenv>=1.0.0
+
+# ============================================================================
+# Jupyter & Interactive Development
+# ============================================================================
+# Jupyter notebook support
+jupyter>=1.0.0
+ipython>=8.0.0
+ipykernel>=6.0.0
+
+# ============================================================================
+# Web Framework & API (Backend - Phase 3)
+# ============================================================================
+# FastAPI framework for REST API
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0.0
+
+# ============================================================================
+# Database (Phase 3)
+# ============================================================================
+# SQLAlchemy ORM
+sqlalchemy>=2.0.0
+
+# ============================================================================
+# Data Validation & Processing
+# ============================================================================
+# Data validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# ============================================================================
+# Testing & Quality Assurance (Phase 4)
+# ============================================================================
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# HTTP testing for API
+httpx>=0.26.0
+
+# ============================================================================
+# Diagram Generation (Phase 2)
+# ============================================================================
+# PlantUML for architecture diagrams
+plantuml>=0.3.0
+
+# ============================================================================
+# Frontend Build Tools (Phase 5)
+# ============================================================================
+# Note: React and Node.js dependencies will be managed via npm/package.json
+# This section is for any Python-based frontend tooling if needed
+
+# ============================================================================
+# Utilities
+# ============================================================================
+# HTTP requests
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# Rate limiting
+ratelimit>=2.2.1
+
+# ============================================================================
+# Development Tools (Optional)
+# ============================================================================
+# Code formatting
+black>=24.0.0
+ruff>=0.1.0
+
+# Type checking
+mypy>=1.8.0
+
+# ============================================================================
+# Additional Utilities
+# ============================================================================
+# JSON processing
+python-json-logger>=2.0.0
+
+# File handling
+pathlib>=1.0.0  # Built-in, included for documentation
+
+# Async support
+asyncio>=3.4.3  # Built-in, included for documentation
+
+# ============================================================================
+# Version Information
+# ============================================================================
+# Python Version Required: 3.10+
+# Last Updated: 2025-11-04
+# Project: TripSplit - Group Travel Expense Manager
+# Course: AI-Driven Software Engineering Capstone
+
