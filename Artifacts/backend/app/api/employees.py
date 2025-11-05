@@ -1,19 +1,28 @@
+"""
+Employee/User management API endpoints.
+
+This module provides RESTful endpoints for managing users/employees, including:
+- Creating, reading, updating, and deleting users
+- Retrieving user assignments across projects
+- Managing user authentication and profiles
+
+Supports the employee management aspects of the PRD.
+"""
 import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
-from ..core import security  # Assuming a security module for password hashing
-from ..database import get_db
+from app import crud, schemas
+from app.core import security
+from app.db.session import get_db
 
-# It's good practice to have a logger per module
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/users",
-    tags=["Users"],
+    prefix="/employees",
+    tags=["Employees"],
     responses={404: {"description": "Not found"}},
 )
 
@@ -22,15 +31,15 @@ router = APIRouter(
     "/",
     response_model=schemas.UserResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new user",
+    summary="Create a new employee/user",
 )
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
-    Create a new user in the system.
+    Create a new user/employee in the system.
 
     - **email**: Must be a unique email address.
     - **password**: Must be at least 8 characters long.
-    - **system_role**: Defines the user's permissions.
+    - **system_role**: Defines the user's permissions (Admin, Director, PM, Employee).
     """
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
@@ -40,11 +49,9 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
     
-    # In a real app, password hashing is critical.
-    # This call assumes you have a security utility to handle it.
+    # Hash the password before storing
     hashed_password = security.get_password_hash(user.password)
     
-    # The CRUD function should not handle the raw password.
     created_user = crud.create_user(db=db, user=user, password_hash=hashed_password)
     logger.info(f"User created successfully with ID: {created_user.id}")
     return created_user
@@ -53,7 +60,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.get(
     "/",
     response_model=List[schemas.UserResponse],
-    summary="Get a list of all users",
+    summary="Get a list of all employees",
 )
 def read_users(
     skip: int = 0,
@@ -61,7 +68,7 @@ def read_users(
     db: Session = Depends(get_db),
 ):
     """
-    Retrieve a list of users with pagination.
+    Retrieve a list of users/employees with pagination.
     - **skip**: Number of records to skip.
     - **limit**: Maximum number of records to return (max 200).
     """
@@ -72,11 +79,13 @@ def read_users(
 @router.get(
     "/{user_id}",
     response_model=schemas.UserWithAssignmentsResponse,
-    summary="Get a specific user by ID with their assignments",
+    summary="Get a specific employee by ID with their assignments",
 )
 def read_user(user_id: int, db: Session = Depends(get_db)):
     """
     Retrieve a single user by their ID, including all their project assignments.
+    
+    This supports US012: View a single employee's timeline across all projects.
     """
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
@@ -97,7 +106,7 @@ def read_user(user_id: int, db: Session = Depends(get_db)):
 @router.put(
     "/{user_id}",
     response_model=schemas.UserResponse,
-    summary="Update an existing user",
+    summary="Update an existing employee",
 )
 def update_user(
     user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)
@@ -130,9 +139,8 @@ def update_user(
         update_data["password_hash"] = hashed_password
         del update_data["password"]
 
-    # The CRUD function expects a Pydantic model, so we create one
-    # This ensures type safety and consistency with the CRUD layer's expectations
-    final_update_schema = crud.UserUpdate(**update_data)
+    # Create the update schema for CRUD
+    final_update_schema = schemas.UserUpdate(**update_data)
 
     updated_user = crud.update_user(db, user_id=user_id, user_update=final_update_schema)
     logger.info(f"User with ID {user_id} was updated.")
@@ -142,7 +150,7 @@ def update_user(
 @router.delete(
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a user",
+    summary="Delete an employee",
 )
 def delete_user(user_id: int, db: Session = Depends(get_db)):
     """
@@ -155,3 +163,4 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         )
     logger.info(f"User with ID {user_id} was deleted.")
     return None
+

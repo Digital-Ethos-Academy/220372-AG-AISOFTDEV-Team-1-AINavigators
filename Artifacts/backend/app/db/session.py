@@ -1,39 +1,39 @@
 """
 Database session management for the StaffAlloc application.
 
-This module sets up the SQLAlchemy async engine and session factory for the
+This module sets up the SQLAlchemy synchronous engine and session factory for the
 SQLite database. It includes configuration for enabling Write-Ahead Logging (WAL)
 mode to improve concurrency, which is crucial for a responsive local-first
 application.
 
 Key components:
-- `engine`: The core SQLAlchemy async engine connected to the database.
-- `AsyncSessionLocal`: A factory for creating new database sessions.
+- `engine`: The core SQLAlchemy synchronous engine connected to the database.
+- `SessionLocal`: A factory for creating new database sessions.
 - `get_db`: A FastAPI dependency to provide a database session to API endpoints,
   ensuring the session is properly closed after the request is handled.
 - `create_db_and_tables`: A utility function to initialize the database schema,
   useful for initial setup or testing.
 """
 import os
-from typing import AsyncGenerator
+from typing import Generator
 
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 
-from .config import settings
-from .models.base import Base  # Assuming a central Base class in models/base.py
+from app.core.config import settings
+from app.models import Base  # Import Base from models
 
 # The DATABASE_URL is taken from the central settings configuration.
-# The `+aiosqlite` dialect indicates that we are using the async `aiosqlite` driver.
+# Using synchronous sqlite driver for simplicity in the prototype.
 DATABASE_URL = settings.DATABASE_URL
 
-# Create the SQLAlchemy async engine.
-# `echo=True` can be useful for debugging SQL queries during development.
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Create the SQLAlchemy synchronous engine.
+# `echo=False` for production; set to True for debugging SQL queries.
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False}  # Needed for SQLite
+)
 
 
 # This event listener ensures that WAL (Write-Ahead Logging) mode is enabled
@@ -41,7 +41,7 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 # for concurrent reads and writes, which is essential for a responsive API
 # and UI, especially when background jobs might be writing to the DB while
 # the user is reading data.
-@event.listens_for(engine.sync_engine, "connect")
+@event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     """
     Enables WAL mode for SQLite connections to improve concurrency.
@@ -49,27 +49,23 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout = 5000") # 5 seconds
+        cursor.execute("PRAGMA busy_timeout = 5000")  # 5 seconds
         cursor.execute("PRAGMA foreign_keys=ON")
     finally:
         cursor.close()
 
 
-# Create a configured "AsyncSession" class.
+# Create a configured "Session" class.
 # `autocommit=False` and `autoflush=False` are standard settings for using
 # SQLAlchemy sessions with FastAPI.
-# `expire_on_commit=False` is important for async contexts to prevent objects
-# from being expired from the session after a commit.
-AsyncSessionLocal = async_sessionmaker(
+SessionLocal = sessionmaker(
     bind=engine,
-    class_=AsyncSession,
     autocommit=False,
     autoflush=False,
-    expire_on_commit=False,
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+def get_db() -> Generator[Session, None, None]:
     """
     FastAPI dependency that provides an SQLAlchemy database session.
 
@@ -78,16 +74,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     is always closed, even if an error occurs during the request.
 
     Yields:
-        AsyncSession: The SQLAlchemy asynchronous session object.
+        Session: The SQLAlchemy synchronous session object.
     """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-async def create_db_and_tables():
+def create_db_and_tables():
     """
     Utility function to create all database tables defined by the SQLAlchemy models.
 
@@ -96,11 +92,11 @@ async def create_db_and_tables():
     are the recommended approach for schema management.
     """
     # Ensure the directory for the database file exists
-    db_path = DATABASE_URL.split("///")[-1]
+    db_path = DATABASE_URL.replace("sqlite:///", "")
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
-    async with engine.begin() as conn:
-        # This will create all tables that inherit from the Base declarative class.
-        await conn.run_sync(Base.metadata.create_all)
+    # This will create all tables that inherit from the Base declarative class.
+    Base.metadata.create_all(bind=engine)
+

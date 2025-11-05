@@ -1,23 +1,41 @@
+"""
+Allocation management API endpoints.
+
+This module provides RESTful endpoints for managing:
+- Project assignments (linking employees to projects with roles and funded hours)
+- Hour allocations (monthly hour allocations for each assignment)
+
+This is the core of the allocation grid functionality, supporting user stories:
+- US002: Add employees to projects
+- US003: Allocate hours in the grid
+- US004: Automatic FTE calculation
+- US005: Over-budget warnings
+- US006: Cross-project over-allocation detection
+"""
 import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
-from ..database import get_db
+from app import crud, schemas
+from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/assignments",
-    tags=["Project Assignments"],
+    prefix="/allocations",
+    tags=["Allocations"],
     responses={404: {"description": "Not found"}},
 )
 
 
+# ======================================================================================
+# Project Assignment Endpoints
+# ======================================================================================
+
 @router.post(
-    "/",
+    "/assignments",
     response_model=schemas.ProjectAssignmentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new project assignment",
@@ -28,6 +46,8 @@ def create_project_assignment(
     """
     Assign a user to a project with a specific role, LCAT, and funded hours.
     A user can only be assigned to a project once.
+    
+    Supports US002: Add an employee to a project.
     """
     # Check for existing assignment for this user on this project
     existing_assignment = crud.get_assignment_by_user_and_project(
@@ -55,7 +75,7 @@ def create_project_assignment(
 
 
 @router.get(
-    "/{assignment_id}",
+    "/assignments/{assignment_id}",
     response_model=schemas.ProjectAssignmentWithAllocationsResponse,
     summary="Get assignment details by ID",
 )
@@ -79,7 +99,7 @@ def read_project_assignment(assignment_id: int, db: Session = Depends(get_db)):
 
 
 @router.put(
-    "/{assignment_id}",
+    "/assignments/{assignment_id}",
     response_model=schemas.ProjectAssignmentResponse,
     summary="Update a project assignment",
 )
@@ -91,6 +111,7 @@ def update_project_assignment(
     """
     Update an existing project assignment.
     Note: `project_id` and `user_id` cannot be changed.
+    You can update role, LCAT, and funded hours.
     """
     updated_assignment = crud.update_project_assignment(
         db, assignment_id=assignment_id, assignment_update=assignment_update
@@ -104,7 +125,7 @@ def update_project_assignment(
 
 
 @router.delete(
-    "/{assignment_id}",
+    "/assignments/{assignment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a project assignment",
 )
@@ -121,20 +142,28 @@ def delete_project_assignment(assignment_id: int, db: Session = Depends(get_db))
     return None
 
 
-# --- Allocations Sub-resource ---
+# ======================================================================================
+# Allocation (Monthly Hours) Endpoints
+# ======================================================================================
 
 @router.post(
-    "/allocations",
+    "/",
     response_model=schemas.AllocationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new allocation",
-    tags=["Allocations"]
 )
 def create_allocation(
     allocation: schemas.AllocationCreate, db: Session = Depends(get_db)
 ):
     """
     Create a new monthly hour allocation for a project assignment.
+    
+    Supports US003: Allocate hours to an employee for a specific month.
+    
+    This endpoint will be used by the allocation grid to create new hour entries.
+    The frontend should also implement validations for:
+    - US005: Budget overrun detection (remaining hours)
+    - US006: Cross-project over-allocation (>100% FTE)
     """
     # Validate that the parent assignment exists
     if not crud.get_project_assignment(db, allocation.project_assignment_id):
@@ -148,11 +177,27 @@ def create_allocation(
     return created_allocation
 
 
+@router.get(
+    "/{allocation_id}",
+    response_model=schemas.AllocationResponse,
+    summary="Get a specific allocation",
+)
+def read_allocation(allocation_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve a single allocation by its ID.
+    """
+    db_allocation = crud.get_allocation(db, allocation_id=allocation_id)
+    if db_allocation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Allocation not found"
+        )
+    return db_allocation
+
+
 @router.put(
-    "/allocations/{allocation_id}",
+    "/{allocation_id}",
     response_model=schemas.AllocationResponse,
     summary="Update an allocation",
-    tags=["Allocations"]
 )
 def update_allocation(
     allocation_id: int,
@@ -161,6 +206,9 @@ def update_allocation(
 ):
     """
     Update the `allocated_hours` for an existing allocation.
+    
+    This is the primary endpoint for the allocation grid's cell updates.
+    Supports US003: Modify hours in the grid.
     """
     updated_allocation = crud.update_allocation(
         db, allocation_id=allocation_id, allocation_update=allocation_update
@@ -174,10 +222,9 @@ def update_allocation(
 
 
 @router.delete(
-    "/allocations/{allocation_id}",
+    "/{allocation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an allocation",
-    tags=["Allocations"]
 )
 def delete_allocation(allocation_id: int, db: Session = Depends(get_db)):
     """
@@ -190,3 +237,29 @@ def delete_allocation(allocation_id: int, db: Session = Depends(get_db)):
         )
     logger.info(f"Allocation with ID {allocation_id} was deleted.")
     return None
+
+
+# ======================================================================================
+# Helper Endpoints for Validation and Reporting
+# ======================================================================================
+
+@router.get(
+    "/users/{user_id}/summary",
+    summary="Get user's monthly allocation summary",
+)
+def get_user_allocation_summary(user_id: int, db: Session = Depends(get_db)):
+    """
+    Get a summary of a user's total allocated hours per month across all projects.
+    
+    This supports US006: Cross-project over-allocation detection.
+    Returns data like: [{'year': 2025, 'month': 1, 'total_hours': 160}, ...]
+    """
+    # Validate user exists
+    if not crud.get_user(db, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    
+    summary = crud.get_user_allocation_summary(db, user_id=user_id)
+    return summary
+

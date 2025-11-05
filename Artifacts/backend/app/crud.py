@@ -1,195 +1,21 @@
 # crud.py
+"""
+CRUD (Create, Read, Update, Delete) operations for the StaffAlloc application.
 
+This module provides database access functions for all models. It uses the
+Repository pattern to abstract SQLAlchemy query logic from the service and
+API layers.
+
+All functions accept a SQLAlchemy Session and return model instances or lists.
+These functions are called by the API routers via dependency injection.
+"""
 import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from . import models
-
-# --- Pydantic Schemas (Placeholders) ---
-# NOTE: In a real application, these would be in a separate `schemas.py` file.
-# They are included here to make the function signatures complete and understandable,
-# following the pattern in the user's example.
-
-
-class BaseSchema(BaseModel):
-    class Config:
-        from_attributes = True
-
-
-# User Schemas
-class UserBase(BaseSchema):
-    email: EmailStr
-    full_name: str
-    system_role: models.SystemRole
-    is_active: bool = True
-
-
-class UserCreate(UserBase):
-    password: str  # The raw password, to be hashed in the service layer
-
-
-class UserUpdate(BaseSchema):
-    email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
-    system_role: Optional[models.SystemRole] = None
-    is_active: Optional[bool] = None
-    last_login_at: Optional[datetime.datetime] = None
-
-
-# Role Schemas
-class RoleBase(BaseSchema):
-    name: str
-    description: Optional[str] = None
-
-
-class RoleCreate(RoleBase):
-    pass
-
-
-class RoleUpdate(BaseSchema):
-    name: Optional[str] = None
-    description: Optional[str] = None
-
-
-# LCAT Schemas
-class LCATBase(BaseSchema):
-    name: str
-    description: Optional[str] = None
-
-
-class LCATCreate(LCATBase):
-    pass
-
-
-class LCATUpdate(BaseSchema):
-    name: Optional[str] = None
-    description: Optional[str] = None
-
-
-# Project Schemas
-class ProjectBase(BaseSchema):
-    name: str
-    code: str
-    client: Optional[str] = None
-    start_date: datetime.date
-    sprints: int
-    manager_id: Optional[int] = None
-    status: models.ProjectStatus = models.ProjectStatus.ACTIVE
-
-
-class ProjectCreate(ProjectBase):
-    pass
-
-
-class ProjectUpdate(BaseSchema):
-    name: Optional[str] = None
-    code: Optional[str] = None
-    client: Optional[str] = None
-    start_date: Optional[datetime.date] = None
-    sprints: Optional[int] = None
-    manager_id: Optional[int] = None
-    status: Optional[models.ProjectStatus] = None
-
-
-# ProjectAssignment Schemas
-class ProjectAssignmentBase(BaseSchema):
-    project_id: int
-    user_id: int
-    role_id: int
-    lcat_id: int
-    funded_hours: int
-
-
-class ProjectAssignmentCreate(ProjectAssignmentBase):
-    pass
-
-
-class ProjectAssignmentUpdate(BaseSchema):
-    role_id: Optional[int] = None
-    lcat_id: Optional[int] = None
-    funded_hours: Optional[int] = None
-
-
-# Allocation Schemas
-class AllocationBase(BaseSchema):
-    project_assignment_id: int
-    year: int
-    month: int
-    allocated_hours: int
-
-
-class AllocationCreate(AllocationBase):
-    pass
-
-
-class AllocationUpdate(BaseSchema):
-    allocated_hours: Optional[int] = None
-
-
-# MonthlyHourOverride Schemas
-class MonthlyHourOverrideBase(BaseSchema):
-    project_id: int
-    year: int
-    month: int
-    overridden_hours: int
-
-
-class MonthlyHourOverrideCreate(MonthlyHourOverrideBase):
-    pass
-
-
-class MonthlyHourOverrideUpdate(BaseSchema):
-    overridden_hours: Optional[int] = None
-
-
-# AIRecommendation Schemas
-class AIRecommendationBase(BaseSchema):
-    recommendation_type: models.RecommendationType
-    context_json: Optional[Dict[str, Any]] = None
-    recommendation_text: str
-    status: models.RecommendationStatus = models.RecommendationStatus.PENDING
-
-
-class AIRecommendationCreate(AIRecommendationBase):
-    pass
-
-
-class AIRecommendationUpdate(BaseSchema):
-    status: Optional[models.RecommendationStatus] = None
-    acted_upon_at: Optional[datetime.datetime] = None
-
-
-# AIRagCache Schemas
-class AIRagCacheBase(BaseSchema):
-    source_entity: str
-    source_id: int
-    document_text: str
-
-
-class AIRagCacheCreate(AIRagCacheBase):
-    pass
-
-
-class AIRagCacheUpdate(BaseSchema):
-    document_text: Optional[str] = None
-    last_indexed_at: Optional[datetime.datetime] = None
-
-
-# AuditLog Schemas
-class AuditLogBase(BaseSchema):
-    action: str
-    user_id: Optional[int] = None
-    entity_type: Optional[str] = None
-    entity_id: Optional[int] = None
-    details: Optional[Dict[str, Any]] = None
-
-
-class AuditLogCreate(AuditLogBase):
-    pass
+from . import models, schemas
 
 
 # --------------------------------------------------------------------------------
@@ -197,7 +23,7 @@ class AuditLogCreate(AuditLogBase):
 # --------------------------------------------------------------------------------
 
 
-def create_user(db: Session, user: UserCreate, password_hash: str) -> models.User:
+def create_user(db: Session, user: schemas.UserCreate, password_hash: str) -> models.User:
     """
     Creates a new user in the database.
     Note: Password hashing should be done in the service layer before calling this.
@@ -231,7 +57,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.User]
 
 
 def update_user(
-    db: Session, user_id: int, user_update: UserUpdate
+    db: Session, user_id: int, user_update: schemas.UserUpdate
 ) -> Optional[models.User]:
     """Updates an existing user."""
     db_user = get_user(db, user_id)
@@ -259,7 +85,7 @@ def delete_user(db: Session, user_id: int) -> bool:
 # --------------------------------------------------------------------------------
 
 
-def create_role(db: Session, role: RoleCreate) -> models.Role:
+def create_role(db: Session, role: schemas.RoleCreate) -> models.Role:
     """Creates a new role."""
     db_role = models.Role(**role.model_dump())
     db.add(db_role)
@@ -279,7 +105,7 @@ def get_roles(db: Session, skip: int = 0, limit: int = 100) -> List[models.Role]
 
 
 def update_role(
-    db: Session, role_id: int, role_update: RoleUpdate
+    db: Session, role_id: int, role_update: schemas.RoleUpdate
 ) -> Optional[models.Role]:
     """Updates an existing role."""
     db_role = get_role(db, role_id)
@@ -307,7 +133,7 @@ def delete_role(db: Session, role_id: int) -> bool:
 # --------------------------------------------------------------------------------
 
 
-def create_lcat(db: Session, lcat: LCATCreate) -> models.LCAT:
+def create_lcat(db: Session, lcat: schemas.LCATCreate) -> models.LCAT:
     """Creates a new LCAT."""
     db_lcat = models.LCAT(**lcat.model_dump())
     db.add(db_lcat)
@@ -327,7 +153,7 @@ def get_lcats(db: Session, skip: int = 0, limit: int = 100) -> List[models.LCAT]
 
 
 def update_lcat(
-    db: Session, lcat_id: int, lcat_update: LCATUpdate
+    db: Session, lcat_id: int, lcat_update: schemas.LCATUpdate
 ) -> Optional[models.LCAT]:
     """Updates an existing LCAT."""
     db_lcat = get_lcat(db, lcat_id)
@@ -355,7 +181,7 @@ def delete_lcat(db: Session, lcat_id: int) -> bool:
 # --------------------------------------------------------------------------------
 
 
-def create_project(db: Session, project: ProjectCreate) -> models.Project:
+def create_project(db: Session, project: schemas.ProjectCreate) -> models.Project:
     """Creates a new project."""
     db_project = models.Project(**project.model_dump())
     db.add(db_project)
@@ -382,7 +208,7 @@ def get_projects(db: Session, skip: int = 0, limit: int = 100) -> List[models.Pr
 
 
 def update_project(
-    db: Session, project_id: int, project_update: ProjectUpdate
+    db: Session, project_id: int, project_update: schemas.ProjectUpdate
 ) -> Optional[models.Project]:
     """Updates an existing project."""
     db_project = get_project(db, project_id)
@@ -430,7 +256,7 @@ def get_projects_managed_by_user(db: Session, manager_id: int) -> List[models.Pr
 
 
 def create_project_assignment(
-    db: Session, assignment: ProjectAssignmentCreate
+    db: Session, assignment: schemas.ProjectAssignmentCreate
 ) -> models.ProjectAssignment:
     """Creates a new project assignment."""
     db_assignment = models.ProjectAssignment(**assignment.model_dump())
@@ -459,7 +285,7 @@ def get_project_assignments(
 
 
 def update_project_assignment(
-    db: Session, assignment_id: int, assignment_update: ProjectAssignmentUpdate
+    db: Session, assignment_id: int, assignment_update: schemas.ProjectAssignmentUpdate
 ) -> Optional[models.ProjectAssignment]:
     """Updates an existing project assignment."""
     db_assignment = get_project_assignment(db, assignment_id)
@@ -536,7 +362,7 @@ def get_assignment_by_user_and_project(
 # --------------------------------------------------------------------------------
 
 
-def create_allocation(db: Session, allocation: AllocationCreate) -> models.Allocation:
+def create_allocation(db: Session, allocation: schemas.AllocationCreate) -> models.Allocation:
     """Creates a new allocation."""
     db_allocation = models.Allocation(**allocation.model_dump())
     db.add(db_allocation)
@@ -560,7 +386,7 @@ def get_allocations(
 
 
 def update_allocation(
-    db: Session, allocation_id: int, allocation_update: AllocationUpdate
+    db: Session, allocation_id: int, allocation_update: schemas.AllocationUpdate
 ) -> Optional[models.Allocation]:
     """Updates an existing allocation."""
     db_allocation = get_allocation(db, allocation_id)
@@ -624,7 +450,7 @@ def get_user_allocation_summary(db: Session, user_id: int) -> List[Dict[str, Any
 
 
 def create_monthly_hour_override(
-    db: Session, override: MonthlyHourOverrideCreate
+    db: Session, override: schemas.MonthlyHourOverrideCreate
 ) -> models.MonthlyHourOverride:
     """Creates a new monthly hour override."""
     db_override = models.MonthlyHourOverride(**override.model_dump())
@@ -653,7 +479,7 @@ def get_monthly_hour_overrides(
 
 
 def update_monthly_hour_override(
-    db: Session, override_id: int, override_update: MonthlyHourOverrideUpdate
+    db: Session, override_id: int, override_update: schemas.MonthlyHourOverrideUpdate
 ) -> Optional[models.MonthlyHourOverride]:
     """Updates an existing monthly hour override."""
     db_override = get_monthly_hour_override(db, override_id)
@@ -697,7 +523,7 @@ def get_overrides_for_project(
 
 
 def create_ai_recommendation(
-    db: Session, recommendation: AIRecommendationCreate
+    db: Session, recommendation: schemas.AIRecommendationCreate
 ) -> models.AIRecommendation:
     """Creates a new AI recommendation."""
     db_recommendation = models.AIRecommendation(**recommendation.model_dump())
@@ -732,7 +558,7 @@ def get_ai_recommendations(
 
 
 def update_ai_recommendation(
-    db: Session, recommendation_id: int, recommendation_update: AIRecommendationUpdate
+    db: Session, recommendation_id: int, recommendation_update: schemas.AIRecommendationUpdate
 ) -> Optional[models.AIRecommendation]:
     """Updates an existing AI recommendation."""
     db_recommendation = get_ai_recommendation(db, recommendation_id)
@@ -761,7 +587,7 @@ def delete_ai_recommendation(db: Session, recommendation_id: int) -> bool:
 
 
 def create_or_update_rag_cache(
-    db: Session, cache_item: AIRagCacheCreate
+    db: Session, cache_item: schemas.AIRagCacheCreate
 ) -> models.AIRagCache:
     """Creates a new RAG cache item or updates it if it already exists."""
     db_item = (
@@ -809,7 +635,7 @@ def delete_rag_cache(db: Session, cache_id: int) -> bool:
 # --------------------------------------------------------------------------------
 
 
-def create_audit_log(db: Session, log_entry: AuditLogCreate) -> models.AuditLog:
+def create_audit_log(db: Session, log_entry: schemas.AuditLogCreate) -> models.AuditLog:
     """Creates a new audit log entry."""
     db_log = models.AuditLog(**log_entry.model_dump())
     db.add(db_log)

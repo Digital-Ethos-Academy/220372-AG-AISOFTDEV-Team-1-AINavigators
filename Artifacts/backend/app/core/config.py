@@ -30,9 +30,12 @@ class Settings(BaseSettings):
 
     # --- Database Configuration ---
     # The URL for the application's database. For the local prototype, this
-    # defaults to an async SQLite database file in the `data/` directory.
-    # The architecture document specifies this path.
-    DATABASE_URL: str = "sqlite+aiosqlite:///./data/staffalloc.db"
+    # defaults to a synchronous SQLite database file in the `data/` directory.
+    # Changed from aiosqlite to sync sqlite for simplicity.
+    DATABASE_URL: str = "sqlite:///./data/staffalloc.db"
+    
+    # Derived path for database file (for directory creation)
+    SQLITE_DB_PATH: str = "./data/staffalloc.db"
 
     # --- Security and JWT Settings ---
     # A secret key for signing JWTs.
@@ -55,15 +58,25 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
+    
+    # Alias for compatibility with main.py
+    BACKEND_CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = CORS_ORIGINS
 
     # --- Local Storage Paths ---
     # As per the architecture document, all data is stored locally.
     REPORTS_DIR: str = "./data/reports"
     VECTOR_STORE_DIR: str = "./data/vector_store"
+    
+    # Aliases for compatibility
+    REPORTS_PATH: str = "./data/reports"
+    VECTOR_STORE_PATH: str = "./data/vector_store"
 
     # --- AI and LLM Integration Settings ---
     # The base URL for the locally running Ollama server.
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    # Alias for API endpoint
+    OLLAMA_API_URL: str = "http://localhost:11434"
+    
     # The name of the sentence-transformer model to use for embeddings in the RAG pipeline.
     # 'all-MiniLM-L6-v2' is a good default: fast, effective, and runs locally.
     EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
@@ -84,3 +97,4 @@ class Settings(BaseSettings):
 # Create a single, globally accessible instance of the Settings class.
 # Other modules should import this `settings` object.
 settings = Settings()
+

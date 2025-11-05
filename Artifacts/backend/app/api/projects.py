@@ -1,11 +1,21 @@
+"""
+Project management API endpoints.
+
+This module provides RESTful endpoints for managing projects, including:
+- Creating, reading, updating, and deleting projects
+- Managing monthly hour overrides for projects
+- Retrieving project assignments and related data
+
+Supports user stories: US001, US007
+"""
 import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
-from ..database import get_db
+from app import crud, schemas
+from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +161,8 @@ def create_monthly_hour_override(
     Create a new monthly hour override for a specific project.
     This sets a fixed number of working hours for a project in a given month,
     bypassing the default calculation.
+    
+    Supports US007: Override system-calculated full-time hours for specific months.
     """
     # Validate that the project exists
     db_project = crud.get_project(db, project_id=override.project_id)
@@ -207,3 +219,4 @@ def delete_monthly_hour_override(override_id: int, db: Session = Depends(get_db)
         )
     logger.info(f"Monthly hour override with ID {override_id} was deleted.")
     return None
+

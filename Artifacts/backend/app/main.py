@@ -1,3 +1,9 @@
+"""
+FastAPI application entry point for StaffAlloc.
+
+This module creates and configures the main FastAPI application instance,
+including middleware, exception handlers, event handlers, and router inclusions.
+"""
 import logging
 import sys
 from pathlib import Path
@@ -8,19 +14,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, UJSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 
-# The following imports assume the directory structure from the architecture document
-# is placed within the 'app' package.
-from app.api import (
-    admin,
-    ai,
-    allocations,
-    employees,
-    projects,
-    reports,
-)
+# Import routers from the api package
+from app.api import admin, ai, allocations, employees, projects, reports
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.db.session import get_db
@@ -57,7 +55,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.PROJECT_NAME,
         description="Local-first prototype for an AI-driven staff allocation platform.",
-        version="1.0.0",
+        version=settings.VERSION,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/v1/openapi.json",
@@ -132,7 +130,7 @@ def create_app() -> FastAPI:
         )
 
     # --- API Router Inclusions ---
-    api_v1_prefix = "/api/v1"
+    api_v1_prefix = settings.API_V1_STR
     app.include_router(projects.router, prefix=api_v1_prefix, tags=["Projects"])
     app.include_router(allocations.router, prefix=api_v1_prefix, tags=["Allocations"])
     app.include_router(employees.router, prefix=api_v1_prefix, tags=["Employees"])
@@ -153,14 +151,14 @@ def read_root():
     """Provides basic information about the API and links to the documentation."""
     return {
         "message": f"Welcome to the {settings.PROJECT_NAME} API",
-        "version": app.version,
+        "version": settings.VERSION,
         "docs_url": app.docs_url,
         "redoc_url": app.redoc_url,
     }
 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
-async def health_check(db: AsyncSession = Depends(get_db)):
+def health_check(db: Session = Depends(get_db)):
     """
     Performs a health check of the API and its critical dependencies.
     Checks for database connectivity and local LLM service availability.
@@ -170,23 +168,30 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 
     # 1. Check database connection
     try:
-        await db.execute(text("SELECT 1"))
+        db.execute(text("SELECT 1"))
     except Exception as e:
         logger.error("Database health check failed", error=str(e))
         db_status = "error"
 
     # 2. Check local LLM service (Ollama)
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        import httpx
+        with httpx.Client(timeout=5.0) as client:
             # Ollama's root endpoint returns "Ollama is running"
-            response = await client.get(settings.OLLAMA_API_URL)
+            response = client.get(settings.OLLAMA_API_URL)
             response.raise_for_status()
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        logger.error("LLM service health check failed", error=str(e))
-        llm_status = "error"
+        logger.warning("LLM service health check failed", error=str(e))
+        llm_status = "unavailable"  # Changed to warning level since AI is optional for MVP
 
-    if db_status == "ok" and llm_status == "ok":
-        return {"status": "healthy", "dependencies": {"database": db_status, "llm_service": llm_status}}
+    if db_status == "ok":
+        return {
+            "status": "healthy",
+            "dependencies": {
+                "database": db_status,
+                "llm_service": llm_status
+            }
+        }
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
