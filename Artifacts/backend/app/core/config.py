@@ -90,7 +90,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        # Allow extra environment variables (e.g., CI/CD or developer-specific
+        # keys) so that unrecognized keys do not cause validation errors when
+        # running tests or in different environments.
+        extra="ignore",
     )
 
 
