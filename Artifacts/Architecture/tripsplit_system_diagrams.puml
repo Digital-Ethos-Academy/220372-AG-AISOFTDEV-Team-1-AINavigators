@@ -1,0 +1,98 @@
+@startuml TripSplit System Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title System Context Diagram: TripSplit Local Development Environment
+
+LAYOUT_WITH_LEGEND()
+
+Person(traveler, "Traveler", "A participant in a trip who tracks expenses and balances.")
+Person(organizer, "Trip Organizer", "A user who creates trips, manages participants, and settles debts.")
+
+System_Boundary(workstation, "Developer Workstation") {
+    Container(web_client, "React Web Client", "JavaScript, Vite", "Provides the user interface for TripSplit. Served on localhost:5173.")
+    Container(backend, "FastAPI Backend", "Python, FastAPI", "Handles business logic, data access, and integrations. Served on localhost:8000.")
+    ContainerDb(sqlite, "SQLite Database", "File-based SQL DB", "Stores core application data (users, trips, expenses) in a local file.")
+    ContainerDb(file_storage, "Local File Storage", "Filesystem", "Stores uploaded receipts and generated reports in a local directory.")
+    ContainerDb(vector_db, "Local Vector DB", "Chroma / LanceDB", "Stores text embeddings for RAG chat functionality.")
+    System(ai_runtime, "Local AI Runtime", "Ollama / LM Studio", "Runs local LLMs for smart categorization and RAG responses.")
+    System(mailhog, "MailHog SMTP Server", "Go", "Catches and displays emails for local development. UI on localhost:8025.")
+}
+
+Rel(traveler, web_client, "Views balances, adds expenses", "HTTPS")
+Rel(organizer, web_client, "Creates trips, manages expenses, generates reports", "HTTPS")
+
+Rel(web_client, backend, "Makes API calls", "HTTP/JSON")
+
+Rel(backend, sqlite, "Reads/Writes data", "SQLAlchemy ORM")
+Rel(backend, file_storage, "Saves/Retrieves files (receipts, reports)", "File I/O")
+Rel(backend, vector_db, "Reads/Writes embeddings for RAG", "SDK / API")
+Rel(backend, ai_runtime, "Sends prompts, gets completions/categories", "HTTP/API")
+Rel(backend, mailhog, "Sends notification emails", "SMTP")
+
+@enduml
+```
+
+```plantuml
+@startuml TripSplit Backend Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram: TripSplit FastAPI Backend
+
+LAYOUT_WITH_LEGEND()
+
+SystemDb(sqlite, "SQLite Database", "Stores relational data (users, trips, expenses)")
+SystemDb(filesystem, "Local Filesystem", "Stores unstructured files (receipts, reports)")
+SystemDb(chroma, "Local Vector DB", "Chroma/LanceDB", "Stores embeddings for RAG")
+System(ollama, "Local AI Runtime", "Ollama/LM Studio", "Provides LLM for categorization and chat")
+System(mailhog, "MailHog SMTP Server", "Catches outgoing emails for debugging")
+
+Container_Boundary(backend, "FastAPI Application") {
+    package "API Routers (Presentation Layer)" #LightBlue {
+        Component(users_router, "Users Router", "FastAPI APIRouter", "Handles /users endpoints for auth and profile management.")
+        Component(trips_router, "Trips Router", "FastAPI APIRouter", "Handles /trips endpoints for trip creation and management.")
+        Component(expenses_router, "Expenses Router", "FastAPI APIRouter", "Handles /expenses endpoints for logging and splitting.")
+        Component(settlements_router, "Settlements Router", "FastAPI APIRouter", "Handles /settlements endpoints for balance resolution.")
+        Component(reports_router, "Reports Router", "FastAPI APIRouter", "Handles /reports endpoints for data export.")
+        Component(ai_router, "AI Router", "FastAPI APIRouter", "Handles /ai endpoints for RAG chat and categorization.")
+    }
+
+    Component(service_layer, "Service Layer", "Python Modules", "Contains core business logic for all application features (e.g., calculating balances, generating settlements).")
+    Component(repo_layer, "Repository Layer", "Python Modules, SQLAlchemy", "Provides an abstraction over the database for data access operations.")
+    Component(domain_models, "Domain Models", "Pydantic, SQLAlchemy ORM", "Defines the core data structures and validation rules for the application.")
+    Component(background_jobs, "Background Jobs", "APScheduler / BackgroundTasks", "Handles long-running or asynchronous tasks like report generation or data indexing.")
+
+    package "Adapters (Integrations)" #LightGreen {
+        Component(ai_adapter, "AI Adapter", "Python Module", "Interfaces with the Local AI Runtime (Ollama).")
+        Component(vector_adapter, "Vector Store Adapter", "Python Module", "Interfaces with the Local Vector DB (Chroma).")
+        Component(file_adapter, "File Storage Adapter", "Python Module", "Interfaces with the Local Filesystem.")
+        Component(smtp_adapter, "SMTP Adapter", "Python Module", "Interfaces with the MailHog SMTP server.")
+    }
+
+    Rel(users_router, service_layer, "Uses", "HTTP Request")
+    Rel(trips_router, service_layer, "Uses", "HTTP Request")
+    Rel(expenses_router, service_layer, "Uses", "HTTP Request")
+    Rel(settlements_router, service_layer, "Uses", "HTTP Request")
+    Rel(reports_router, service_layer, "Uses", "HTTP Request")
+    Rel(ai_router, service_layer, "Uses", "HTTP Request")
+
+    Rel(service_layer, repo_layer, "Uses", "Data requests")
+    Rel(service_layer, domain_models, "Uses for data validation and structure", "Pydantic")
+    Rel(service_layer, background_jobs, "Enqueues tasks", "Async call")
+
+    Rel(repo_layer, domain_models, "Uses for ORM mapping", "SQLAlchemy")
+    Rel(repo_layer, sqlite, "Reads/Writes data", "SQL")
+
+    Rel(service_layer, ai_adapter, "Uses")
+    Rel(service_layer, vector_adapter, "Uses")
+    Rel(service_layer, file_adapter, "Uses")
+    Rel(service_layer, smtp_adapter, "Uses")
+
+    Rel(background_jobs, service_layer, "Executes business logic")
+
+    Rel(ai_adapter, ollama, "Sends prompts, gets completions", "HTTP/API")
+    Rel(vector_adapter, chroma, "Reads/Writes embeddings", "SDK/API")
+    Rel(file_adapter, filesystem, "Reads/Writes files", "File I/O")
+    Rel(smtp_adapter, mailhog, "Sends emails", "SMTP")
+}
+
+@enduml
