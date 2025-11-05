@@ -20,8 +20,10 @@ CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
     system_role TEXT NOT NULL CHECK(system_role IN ('Admin', 'Director', 'PM', 'Employee')),
     is_active BOOLEAN NOT NULL DEFAULT 1,
+    last_login_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -150,6 +152,8 @@ CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY,
     user_id INTEGER,
     action TEXT NOT NULL, -- e.g., 'PROJECT_CREATE', 'ALLOCATION_UPDATE'
+    entity_type TEXT, -- e.g., 'project', 'allocation', 'user'
+    entity_id INTEGER, -- The ID of the entity being acted upon
     details TEXT, -- JSON blob with before/after values or context
     timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -185,6 +189,11 @@ CREATE INDEX idx_monthly_hour_overrides_project_year_month ON monthly_hour_overr
 
 -- AI RAG Cache table
 CREATE INDEX idx_ai_rag_cache_source ON ai_rag_cache(source_entity, source_id);
+
+-- Audit Log table
+CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
+CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
 
 
 --------------------------------------------------------------------------------
@@ -264,6 +273,7 @@ INSERT INTO lcats (name, description) VALUES
 ('Principal', 'Expert-level professional with 10+ years of experience.');
 
 -- Seed a default Admin user for initial setup.
--- In a real application, the password would be a secure hash.
-INSERT INTO users (email, full_name, system_role, is_active) VALUES
-('admin@staffalloc.com', 'Admin User', 'Admin', 1);
+-- Default password is 'admin123' (MUST be changed in production).
+-- Password hash generated with bcrypt (rounds=12).
+INSERT INTO users (email, full_name, password_hash, system_role, is_active) VALUES
+('admin@staffalloc.com', 'Admin User', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyB3nJXvDXh2', 'Admin', 1);
