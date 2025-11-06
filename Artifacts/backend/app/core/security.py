@@ -12,8 +12,8 @@ from passlib.context import CryptContext
 
 from .config import settings
 
-# Configure password hashing context with bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Configure password hashing context with pbkdf2_sha256 to avoid bcrypt backend issues
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

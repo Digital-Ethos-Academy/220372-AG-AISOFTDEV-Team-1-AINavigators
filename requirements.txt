@@ -1,5 +1,5 @@
 # Core Dependencies for AI-Driven Software Engineering Capstone Project
-# TripSplit: Group Travel Expense Manager
+# StaffAlloc: AI-Powered Staffing Management Platform
 
 # ============================================================================
 # LLM Provider SDKs
@@ -50,6 +50,24 @@ sqlalchemy>=2.0.0
 # Data validation
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+
+# ============================================================================
+# Security & Authentication (Phase 3)
+# ============================================================================
+# JWT token handling
+python-jose[cryptography]>=3.3.0
+
+# Password hashing
+passlib[bcrypt]>=1.7.4
+
+# ============================================================================
+# Logging & Monitoring (Phase 3)
+# ============================================================================
+# Structured logging
+structlog>=24.1.0
+
+# Fast JSON processing
+ujson>=5.9.0
 
 # ============================================================================
 # Testing & Quality Assurance (Phase 4)
@@ -107,10 +125,29 @@ pathlib>=1.0.0  # Built-in, included for documentation
 asyncio>=3.4.3  # Built-in, included for documentation
 
 # ============================================================================
+# AI/ML Libraries (Phase 3 - V1.3/V1.4)
+# ============================================================================
+# Note: These are for future AI features and are optional for MVP
+# Uncomment when implementing AI features
+
+# Local LLM integration (Ollama)
+# ollama>=0.1.0
+
+# Sentence transformers for embeddings
+# sentence-transformers>=2.2.0
+
+# Vector database
+# chromadb>=0.4.0
+
+# Excel export functionality
+# openpyxl>=3.1.0
+# xlsxwriter>=3.1.0
+
+# ============================================================================
 # Version Information
 # ============================================================================
 # Python Version Required: 3.10+
-# Last Updated: 2025-11-04
-# Project: TripSplit - Group Travel Expense Manager
+# Last Updated: 2025-11-05
+# Project: StaffAlloc - AI-Powered Staffing Management Platform
 # Course: AI-Driven Software Engineering Capstone
 
