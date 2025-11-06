@@ -20,21 +20,21 @@ The StaffAlloc prototype is designed as a classic three-tier architecture with d
 
 ```mermaid
 graph TD
-    subgraph Client Layer
-        A[React SPA (Web Browser)]
-        B[CLI Tools (Optional)]
+    subgraph "Client Layer"
+        A[React SPA - Web Browser]
+        B[CLI Tools - Optional]
     end
 
-    subgraph API Layer (FastAPI)
+    subgraph "API Layer - FastAPI"
         R1[Projects Router]
         R2[Allocations Router]
         R3[Employees Router]
-        R4[Admin Router (Roles/LCATs)]
+        R4[Admin Router - Roles/LCATs]
         R5[Reports Router]
         R6[AI Router]
     end
 
-    subgraph Service Layer (Business Logic)
+    subgraph "Service Layer - Business Logic"
         S1[ProjectService]
         S2[AllocationService]
         S3[ReportingService]
@@ -42,42 +42,89 @@ graph TD
         S5[AIService]
     end
 
-    subgraph Data Access Layer (SQLAlchemy)
+    subgraph "Data Access Layer - SQLAlchemy"
         D1[SQLAlchemy Core & ORM]
         M1[Models: Project, Employee, Allocation, etc.]
         RP[Repository Pattern]
     end
 
-    subgraph Data & Storage
-        DB[(SQLite Database<br>staffalloc.db)]
-        VS[(ChromaDB<br>Vector Store)]
-        FS[(Local Filesystem<br>./data/reports)]
+    subgraph "Data & Storage"
+        DB[(SQLite Database - staffalloc.db)]
+        VS[(ChromaDB - Vector Store)]
+        FS[(Local Filesystem - ./data/reports)]
     end
 
-    subgraph Background Jobs
+    subgraph "Background Jobs"
         BJ[APScheduler]
         T1[Task: Re-index for RAG]
         T2[Task: Generate large reports]
     end
 
-    subgraph Integration Adapters
-        IA1[Local AI Adapter<br>(Ollama / LM Studio)]
-        IA2[Vector Store Adapter<br>(ChromaDB)]
+    subgraph "Integration Adapters"
+        IA1[Local AI Adapter - Ollama / LM Studio]
+        IA2[Vector Store Adapter - ChromaDB]
         IA3[File Storage Adapter]
         IA4[Mock SMTP Adapter]
     end
 
-    A & B --> R1 & R2 & R3 & R4 & R5 & R6
-    R1 & R2 & R3 & R4 & R5 & R6 --> S1 & S2 & S3 & S4 & S5
+    A --> R1
+    A --> R2
+    A --> R3
+    A --> R4
+    A --> R5
+    A --> R6
+    B --> R1
+    B --> R2
+    B --> R3
+    B --> R4
+    B --> R5
+    B --> R6
 
-    S1 & S2 & S3 & S4 --> RP
-    S5 --> IA1 & IA2 & RP
+    R1 --> S1
+    R1 --> S2
+    R1 --> S3
+    R1 --> S4
+    R1 --> S5
+    R2 --> S1
+    R2 --> S2
+    R2 --> S3
+    R2 --> S4
+    R2 --> S5
+    R3 --> S1
+    R3 --> S2
+    R3 --> S3
+    R3 --> S4
+    R3 --> S5
+    R4 --> S1
+    R4 --> S2
+    R4 --> S3
+    R4 --> S4
+    R4 --> S5
+    R5 --> S1
+    R5 --> S2
+    R5 --> S3
+    R5 --> S4
+    R5 --> S5
+    R6 --> S1
+    R6 --> S2
+    R6 --> S3
+    R6 --> S4
+    R6 --> S5
+
+    S1 --> RP
+    S2 --> RP
+    S3 --> RP
+    S4 --> RP
+    S5 --> IA1
+    S5 --> IA2
+    S5 --> RP
 
     RP --> D1
     D1 --> M1
     D1 --> DB
 
-    BJ --> T1 & T2
+    BJ --> T1
+    BJ --> T2
     T1 --> S5
     T2 --> S3
 
