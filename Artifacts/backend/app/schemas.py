@@ -207,6 +207,22 @@ class AllocationResponse(AllocationInDB):
     pass
 
 
+class AllocationWithDetailsResponse(AllocationInDB):
+    """
+    Allocation with denormalized details from related entities.
+    Useful for displaying allocation information with project/employee/role context.
+    """
+    project_name: str
+    project_code: str
+    user_name: str
+    employee_email: str
+    role_name: str
+    lcat_name: str
+    
+    class Config:
+        from_attributes = True
+
+
 # ======================================================================================
 # Project Assignment Schemas
 # ======================================================================================

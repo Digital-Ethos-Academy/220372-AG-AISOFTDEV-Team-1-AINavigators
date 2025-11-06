@@ -25,13 +25,29 @@ const projectSchema = z.object({
     .string()
     .min(1, 'Project Code is required')
     .regex(/^[A-Z0-9-]+$/, 'Only uppercase letters, numbers, and hyphens allowed'),
-  name: z.string().min(1, 'Project Name is required'),
-  client: z.string().min(1, 'Client Name is required'),
-  start_date: z.string().refine((date) => new Date(date) >= new Date(new Date().setHours(0, 0, 0, 0)), {
-    message: 'Start date cannot be in the past',
-  }),
-  sprints: z
-    .number()
+  name: z
+    .string()
+    .min(1, 'Project Name is required'),
+  client: z
+    .string()
+    .min(1, 'Client Name is required'),
+  start_date: z
+    .string()
+    .min(1, 'Start date is required')
+    .refine((date) => {
+      if (!date) return false;
+      const inputDate = new Date(date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return inputDate >= today;
+    }, {
+      message: 'Start date cannot be in the past',
+    }),
+  sprints: z.coerce
+    .number({
+      required_error: "Number of sprints is required",
+      invalid_type_error: "Must be a number",
+    })
     .int('Must be a whole number')
     .min(1, 'Must be at least 1 sprint')
     .max(52, 'Cannot exceed 52 sprints'),
@@ -194,20 +210,31 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm({
+  } = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onSubmit',
+    criteriaMode: 'firstError',
+    shouldFocusError: true,
+    defaultValues: {
+      code: '',
+      name: '',
+      client: '',
+      start_date: '',
+      sprints: 0,
+    },
   });
 
   const [apiError, setApiError] = useState<string | null>(null);
-  const projectCodeInputRef = useRef(null);
 
-  // Reset form and API error when modal is closed
+  // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
+      // Reset form after closing (with delay for animation)
       setTimeout(() => {
         reset();
         setApiError(null);
-      }, 300); // Wait for closing transition to finish
+      }, 300);
     }
   }, [isOpen, reset]);
 
@@ -226,7 +253,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" initialFocus={projectCodeInputRef} onClose={onClose}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -259,7 +286,6 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess }: Creat
                       id="code"
                       placeholder="e.g., PROJ-2025-001"
                       {...register('code')}
-                      ref={projectCodeInputRef}
                       isInvalid={!!errors.code}
                     />
                   </FormField>

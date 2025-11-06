@@ -146,6 +146,22 @@ def delete_project_assignment(assignment_id: int, db: Session = Depends(get_db))
 # Allocation (Monthly Hours) Endpoints
 # ======================================================================================
 
+@router.get(
+    "/",
+    response_model=List[schemas.AllocationWithDetailsResponse],
+    summary="Get all allocations",
+)
+def list_all_allocations(db: Session = Depends(get_db)):
+    """
+    Retrieve all allocations with related details (project, user, role, lcat).
+    
+    This endpoint provides a comprehensive view of all allocations across
+    all projects and employees, useful for the allocations overview page.
+    """
+    allocations = crud.get_all_allocations_with_details(db)
+    return allocations
+
+
 @router.post(
     "/",
     response_model=schemas.AllocationResponse,

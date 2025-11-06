@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 
 # Import routers from the api package
-from app.api import admin, ai, allocations, employees, projects, reports
+from app.api import admin, ai, allocations, auth, employees, projects, reports
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.db.session import get_db
@@ -131,6 +131,7 @@ def create_app() -> FastAPI:
 
     # --- API Router Inclusions ---
     api_v1_prefix = settings.API_V1_STR
+    app.include_router(auth.router, prefix=api_v1_prefix, tags=["Authentication"])
     app.include_router(projects.router, prefix=api_v1_prefix, tags=["Projects"])
     app.include_router(allocations.router, prefix=api_v1_prefix, tags=["Allocations"])
     app.include_router(employees.router, prefix=api_v1_prefix, tags=["Employees"])

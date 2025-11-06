@@ -385,6 +385,52 @@ def get_allocations(
     return db.query(models.Allocation).offset(skip).limit(limit).all()
 
 
+def get_all_allocations_with_details(db: Session) -> List[Dict[str, Any]]:
+    """
+    Retrieves all allocations with denormalized details from related entities.
+    Returns a list of dictionaries with allocation data plus project, user, role, and lcat info.
+    """
+    results = (
+        db.query(
+            models.Allocation.id,
+            models.Allocation.project_assignment_id,
+            models.Allocation.year,
+            models.Allocation.month,
+            models.Allocation.allocated_hours,
+            models.Project.name.label("project_name"),
+            models.Project.code.label("project_code"),
+            models.User.full_name.label("user_name"),
+            models.User.email.label("employee_email"),
+            models.Role.name.label("role_name"),
+            models.LCAT.name.label("lcat_name"),
+        )
+        .join(models.ProjectAssignment, models.Allocation.project_assignment_id == models.ProjectAssignment.id)
+        .join(models.Project, models.ProjectAssignment.project_id == models.Project.id)
+        .join(models.User, models.ProjectAssignment.user_id == models.User.id)
+        .join(models.Role, models.ProjectAssignment.role_id == models.Role.id)
+        .join(models.LCAT, models.ProjectAssignment.lcat_id == models.LCAT.id)
+        .all()
+    )
+    
+    # Convert to list of dictionaries
+    return [
+        {
+            "id": row.id,
+            "project_assignment_id": row.project_assignment_id,
+            "year": row.year,
+            "month": row.month,
+            "allocated_hours": row.allocated_hours,
+            "project_name": row.project_name,
+            "project_code": row.project_code,
+            "user_name": row.user_name,
+            "employee_email": row.employee_email,
+            "role_name": row.role_name,
+            "lcat_name": row.lcat_name,
+        }
+        for row in results
+    ]
+
+
 def update_allocation(
     db: Session, allocation_id: int, allocation_update: schemas.AllocationUpdate
 ) -> Optional[models.Allocation]:

@@ -93,6 +93,35 @@ def read_project(project_id: int, db: Session = Depends(get_db)):
     return project_response
 
 
+@router.get(
+    "/{project_id}/assignments",
+    response_model=List[schemas.ProjectAssignmentWithAllocationsResponse],
+    summary="Get all assignments for a project",
+)
+def read_project_assignments(project_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve all assignments (team members) for a specific project.
+    Returns a list of assignments with user, role, LCAT, and allocation information.
+    This is used by the allocation grid to display and edit monthly hours.
+    """
+    db_project = crud.get_project(db, project_id=project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    
+    assignments = crud.get_assignments_for_project(db, project_id=project_id)
+    
+    # Add allocations to each assignment
+    result = []
+    for assignment in assignments:
+        assignment_dict = schemas.ProjectAssignmentWithAllocationsResponse.model_validate(assignment)
+        assignment_dict.allocations = crud.get_allocations_for_assignment(db, assignment_id=assignment.id)
+        result.append(assignment_dict)
+    
+    return result
+
+
 @router.put(
     "/{project_id}",
     response_model=schemas.ProjectResponse,

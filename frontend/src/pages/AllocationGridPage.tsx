@@ -91,8 +91,9 @@ function buildAssignmentRows(
 
     // Initialize all month cells
     monthColumns.forEach((monthYear) => {
-      const existingAlloc = assignment.allocations.find(
-        (a) => a.month_year === monthYear
+      const [year, month] = monthYear.split('-').map(Number);
+      const existingAlloc = assignment.allocations?.find(
+        (a) => a.year === year && a.month === month
       );
 
       const hours = existingAlloc?.allocated_hours || 0;
@@ -142,21 +143,23 @@ const AllocationCellInput = ({ cell, onUpdate }: AllocationCellInputProps) => {
 
   return (
     <td className={`border border-gray-300 p-0 relative ${colorClass}`}>
-      <input
-        type="number"
-        min="0"
-        value={cell.hours || ''}
-        onChange={handleChange}
-        className={`w-full h-full px-2 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${colorClass} ${
-          cell.isModified ? 'font-bold' : ''
-        }`}
-        placeholder="0"
-      />
-      {cell.hours > 0 && (
-        <div className="absolute bottom-0 right-0 text-[10px] px-1 opacity-75">
-          {Math.round(fte)}%
-        </div>
-      )}
+      <div className="flex flex-col items-center justify-center h-full py-2">
+        <input
+          type="number"
+          min="0"
+          value={cell.hours || ''}
+          onChange={handleChange}
+          className={`w-full px-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-transparent ${
+            cell.isModified ? 'font-bold' : ''
+          }`}
+          placeholder="0"
+        />
+        {cell.hours > 0 && (
+          <div className="text-[10px] opacity-70 mt-0.5">
+            {Math.round(fte)}%
+          </div>
+        )}
+      </div>
     </td>
   );
 };
@@ -173,13 +176,17 @@ interface AssignmentRowComponentProps {
 
 const AssignmentRowComponent = ({ row, monthColumns, onCellUpdate }: AssignmentRowComponentProps) => {
   const { assignment } = row;
+  
+  // Handle both nested and flat data structures
+  const employeeName = (assignment as any).user?.full_name || assignment.employee_name || 'Unknown';
+  const roleName = (assignment as any).role?.name || assignment.role_name || 'N/A';
 
   return (
     <tr className={row.isOverBudget ? 'bg-red-50' : ''}>
       <td className="border border-gray-300 px-4 py-2 font-medium sticky left-0 bg-white z-10">
         <div className="flex flex-col">
-          <span className="text-sm text-gray-900">{assignment.employee_name}</span>
-          <span className="text-xs text-gray-500">{assignment.role_name}</span>
+          <span className="text-sm text-gray-900">{employeeName}</span>
+          <span className="text-xs text-gray-500">{roleName}</span>
         </div>
       </td>
       <td className="border border-gray-300 px-4 py-2 text-sm text-center bg-gray-50">
@@ -413,9 +420,12 @@ export default function AllocationGridPage() {
           });
         } else if (cell.hours > 0) {
           // Create new allocation
+          // Parse monthYear string (format: "YYYY-MM") into year and month
+          const [year, month] = cell.monthYear.split('-').map(Number);
           return allocationsService.createAllocation({
-            assignment_id: cell.assignmentId,
-            month_year: cell.monthYear,
+            project_assignment_id: cell.assignmentId,
+            year: year,
+            month: month,
             allocated_hours: cell.hours,
           });
         }
