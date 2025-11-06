@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
+import minMax from 'dayjs/plugin/minMax';
 import type { MonthlyHourOverride, Project } from '../types/api';
-
+dayjs.extend(minMax)
 export interface TimelineMonth {
   year: number;
   month: number;
