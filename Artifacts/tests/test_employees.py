@@ -49,3 +49,30 @@ def test_employee_crud_flow(client, api_prefix):
     assert missing_response.status_code == 404
 
 
+def test_employee_validation_and_duplicate_email_update(client, api_prefix):
+    first = _create_employee(client, api_prefix, email="unique@example.com")
+    assert first.status_code == 201
+
+    invalid_payload = {
+        "email": "bad-email",
+        "full_name": "Invalid User",
+        "password": "short",
+        "system_role": "Employee",
+        "is_active": True,
+    }
+    invalid_response = client.post(
+        f"{api_prefix}/employees/", json=invalid_payload
+    )
+    assert invalid_response.status_code == 422
+
+    second = _create_employee(client, api_prefix, email="second@example.com")
+    assert second.status_code == 201
+    second_id = second.json()["id"]
+
+    duplicate_update = client.put(
+        f"{api_prefix}/employees/{second_id}",
+        json={"email": "unique@example.com"},
+    )
+    assert duplicate_update.status_code == 400
+
+

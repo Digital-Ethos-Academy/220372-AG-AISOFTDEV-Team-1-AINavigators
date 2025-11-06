@@ -139,3 +139,13 @@ def test_export_endpoints(client, api_prefix, reports_seed):
     assert project_export.status_code == 501
 
 
+def test_reports_handles_missing_entities(client, api_prefix):
+    missing_project = client.get(f"{api_prefix}/reports/project-dashboard/999")
+    assert missing_project.status_code == 404
+
+    missing_employee = client.get(
+        f"{api_prefix}/reports/employee-timeline/999"
+    )
+    assert missing_employee.status_code == 404
+
+

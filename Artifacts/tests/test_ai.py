@@ -50,6 +50,36 @@ def test_recommend_staff_placeholder(client, api_prefix, ai_setup):
     assert response.json()["candidates"] == []
 
 
+def test_recommend_staff_missing_entities(client, api_prefix):
+    payload = {
+        "project_id": 1234,
+        "role_id": 5678,
+        "year": 2025,
+        "month": 6,
+        "required_hours": 80,
+    }
+    project_missing = client.post(f"{api_prefix}/ai/recommend-staff", json=payload)
+    assert project_missing.status_code == 404
+
+    role_payload = payload.copy()
+    role_payload["project_id"] = client.post(
+        f"{api_prefix}/projects/",
+        json={
+            "name": "AI Missing Role",
+            "code": "PRJ-AI-NO-ROLE",
+            "client": "Skynet",
+            "start_date": "2025-01-01",
+            "sprints": 2,
+            "status": "Active",
+        },
+    ).json()["id"]
+
+    role_missing = client.post(
+        f"{api_prefix}/ai/recommend-staff", json=role_payload
+    )
+    assert role_missing.status_code == 404
+
+
 def test_conflict_forecast_balance_and_reindex(client, api_prefix, ai_setup):
     conflicts = client.get(f"{api_prefix}/ai/conflicts")
     assert conflicts.status_code == 200

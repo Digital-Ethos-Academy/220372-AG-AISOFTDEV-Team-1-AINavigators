@@ -147,3 +147,19 @@ def test_admin_ai_recommendation_endpoints(client, db_session, api_prefix):
     assert filtered_records[0]["status"] == "Accepted"
 
 
+def test_admin_role_and_lcat_not_found_handling(client, api_prefix):
+    missing_role = client.get(f"{api_prefix}/admin/roles/999")
+    assert missing_role.status_code == 404
+
+    missing_lcat = client.get(f"{api_prefix}/admin/lcats/999")
+    assert missing_lcat.status_code == 404
+
+    update_missing_role = client.put(
+        f"{api_prefix}/admin/roles/999", json={"description": "N/A"}
+    )
+    assert update_missing_role.status_code == 404
+
+    delete_missing_lcat = client.delete(f"{api_prefix}/admin/lcats/999")
+    assert delete_missing_lcat.status_code == 404
+
+
