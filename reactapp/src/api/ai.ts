@@ -18,7 +18,21 @@ export async function chatWithAI(payload: ChatQueryRequest): Promise<ChatQueryRe
 export async function recommendStaff(
   payload: StaffingRecommendationRequestPayload
 ): Promise<StaffingRecommendationResponse> {
-  const { data } = await api.post<StaffingRecommendationResponse>('/ai/recommend-staff', payload);
+  const body: StaffingRecommendationRequestPayload = {
+    project_id: payload.project_id,
+    year: payload.year,
+    month: payload.month,
+    required_hours: payload.required_hours
+  };
+
+  if (payload.role_id) {
+    body.role_id = payload.role_id;
+  }
+  if (payload.lcat_id) {
+    body.lcat_id = payload.lcat_id;
+  }
+
+  const { data } = await api.post<StaffingRecommendationResponse>('/ai/recommend-staff', body);
   return data;
 }
 

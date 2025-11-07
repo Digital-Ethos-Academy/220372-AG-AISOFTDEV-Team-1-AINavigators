@@ -25,15 +25,39 @@ def _create_lcat(client, name: str | None = None):
     return response.json()
 
 
-def _create_user(client, email: str | None = None, full_name: str | None = None):
+def _create_manager(client, email: str | None = None, full_name: str | None = None):
+    """Create a PM/manager user."""
+    user_email = email or f"manager{uuid4().hex[:6]}@example.com"
+    user_name = full_name or "Test Manager"
+    payload = {
+        "email": user_email,
+        "full_name": user_name,
+        "password": "Password123!",
+        "system_role": "PM",
+        "is_active": True,
+    }
+    response = client.post(f"{API_V1_PREFIX}/employees/", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _create_user(client, email: str | None = None, full_name: str | None = None, manager_id: int | None = None):
+    """Create an employee user."""
     user_email = email or f"user{uuid4().hex[:6]}@example.com"
     user_name = full_name or "Test User"
+    
+    # Create a manager if not provided
+    if manager_id is None:
+        manager = _create_manager(client)
+        manager_id = manager["id"]
+    
     payload = {
         "email": user_email,
         "full_name": user_name,
         "password": "Password123!",
         "system_role": "Employee",
         "is_active": True,
+        "manager_id": manager_id,
     }
     response = client.post(f"{API_V1_PREFIX}/employees/", json=payload)
     assert response.status_code == 201, response.text
@@ -413,12 +437,14 @@ def test_ai_endpoints(client):
     project = _create_project(client)
     role = _create_role(client)
 
+    # AI endpoints now return real responses or 503 if GOOGLE_API_KEY not configured
     chat_resp = client.post(
         f"{API_V1_PREFIX}/ai/chat",
         json={"query": "How many allocations exist?", "context_limit": 3},
     )
-    assert chat_resp.status_code == 200
-    assert "answer" in chat_resp.json()
+    assert chat_resp.status_code in [200, 503]
+    if chat_resp.status_code == 200:
+        assert "answer" in chat_resp.json()
 
     recommend_resp = client.post(
         f"{API_V1_PREFIX}/ai/recommend-staff",
@@ -430,20 +456,21 @@ def test_ai_endpoints(client):
             "required_hours": 160,
         },
     )
-    assert recommend_resp.status_code == 200
-    assert "candidates" in recommend_resp.json()
+    assert recommend_resp.status_code in [200, 503]
+    if recommend_resp.status_code == 200:
+        assert "candidates" in recommend_resp.json()
 
     conflicts_resp = client.get(f"{API_V1_PREFIX}/ai/conflicts")
-    assert conflicts_resp.status_code == 200
+    assert conflicts_resp.status_code in [200, 503]
 
     forecast_resp = client.get(f"{API_V1_PREFIX}/ai/forecast", params={"months_ahead": 4})
-    assert forecast_resp.status_code == 200
+    assert forecast_resp.status_code in [200, 503]
 
     balance_resp = client.get(
         f"{API_V1_PREFIX}/ai/balance-suggestions",
         params={"project_id": project["id"]},
     )
-    assert balance_resp.status_code == 200
+    assert balance_resp.status_code in [200, 503]
 
     reindex_resp = client.post(f"{API_V1_PREFIX}/ai/reindex")
     assert reindex_resp.status_code == 202

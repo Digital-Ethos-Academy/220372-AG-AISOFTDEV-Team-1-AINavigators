@@ -1,8 +1,26 @@
 import api from './client';
-import type { LCAT, LCATInput, LCATUpdateInput, Role, RoleInput, RoleUpdateInput } from '../types/api';
+import type {
+  LCAT,
+  LCATInput,
+  LCATUpdateInput,
+  Role,
+  RoleInput,
+  RoleUpdateInput
+} from '../types/api';
 
-export async function fetchRoles(): Promise<Role[]> {
-  const { data } = await api.get<Role[]>('/admin/roles/');
+export interface RoleQueryParams {
+  ownerId?: number;
+  includeGlobal?: boolean;
+}
+
+export async function fetchRoles(params: RoleQueryParams = {}): Promise<Role[]> {
+  const { ownerId, includeGlobal } = params;
+  const { data } = await api.get<Role[]>('/admin/roles/', {
+    params: {
+      ...(ownerId ? { owner_id: ownerId } : {}),
+      ...(includeGlobal !== undefined ? { include_global: includeGlobal } : {})
+    }
+  });
   return data;
 }
 
@@ -20,8 +38,19 @@ export async function deleteRole(roleId: number): Promise<void> {
   await api.delete(`/admin/roles/${roleId}`);
 }
 
-export async function fetchLCATs(): Promise<LCAT[]> {
-  const { data } = await api.get<LCAT[]>('/admin/lcats/');
+export interface LCATQueryParams {
+  ownerId?: number;
+  includeGlobal?: boolean;
+}
+
+export async function fetchLCATs(params: LCATQueryParams = {}): Promise<LCAT[]> {
+  const { ownerId, includeGlobal } = params;
+  const { data } = await api.get<LCAT[]>('/admin/lcats/', {
+    params: {
+      ...(ownerId ? { owner_id: ownerId } : {}),
+      ...(includeGlobal !== undefined ? { include_global: includeGlobal } : {})
+    }
+  });
   return data;
 }
 

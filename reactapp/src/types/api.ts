@@ -12,11 +12,13 @@ export interface Role {
   id: number;
   name: string;
   description?: string | null;
+  owner_id?: number | null;
 }
 
 export interface RoleInput {
   name: string;
   description?: string | null;
+  owner_id?: number | null;
 }
 
 export type RoleUpdateInput = Partial<RoleInput>;
@@ -25,11 +27,13 @@ export interface LCAT {
   id: number;
   name: string;
   description?: string | null;
+  owner_id?: number | null;
 }
 
 export interface LCATInput {
   name: string;
   description?: string | null;
+  owner_id?: number | null;
 }
 
 export type LCATUpdateInput = Partial<LCATInput>;
@@ -89,11 +93,13 @@ export interface ProjectAssignmentWithAllocations extends ProjectAssignment {
 export interface ProjectWithDetails extends Project {
   assignments: ProjectAssignment[];
   monthly_hour_overrides: MonthlyHourOverride[];
+  viewers: UserSummary[];
 }
 
 export interface User extends UserSummary {
   system_role: SystemRole;
   is_active: boolean;
+  manager_id?: number | null;
   last_login_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -107,6 +113,7 @@ export interface UserCreateInput {
   password: string;
   system_role: SystemRole;
   is_active?: boolean;
+  manager_id?: number | null;
 }
 
 export interface UserWithAssignments extends User {
@@ -125,6 +132,22 @@ export interface ProjectCreateInput {
   client?: string | null;
   start_date: string;
   sprints: number;
+  manager_id?: number | null;
+}
+
+export interface ProjectUpdateInput {
+  name?: string;
+  code?: string;
+  client?: string | null;
+  start_date?: string;
+  sprints?: number;
+  status?: ProjectStatus;
+  manager_id?: number | null;
+}
+
+export interface ProjectImportResponse {
+  created_projects: Project[];
+  skipped_codes: string[];
 }
 
 export interface ProjectAssignmentCreateInput {
@@ -133,6 +156,12 @@ export interface ProjectAssignmentCreateInput {
   role_id: number;
   lcat_id: number;
   funded_hours: number;
+}
+
+export interface ProjectAssignmentUpdateInput {
+  role_id?: number;
+  lcat_id?: number;
+  funded_hours?: number;
 }
 
 export interface AllocationInput {
@@ -147,6 +176,15 @@ export interface MonthlyHourOverrideInput {
   year: number;
   month: number;
   overridden_hours: number;
+}
+
+export interface AssignmentDistributionInput {
+  start_year: number;
+  start_month: number;
+  end_year: number;
+  end_month: number;
+  total_hours?: number;
+  strategy?: 'even';
 }
 
 export interface OverAllocatedEmployee {
@@ -177,10 +215,13 @@ export interface PortfolioDashboard {
 
 export interface BurnDownDataPoint {
   label: string;
-  planned_hours?: number;
-  actual_hours?: number;
-  sprint_index?: number;
-  date?: string;
+  planned_hours: number;
+  actual_hours: number;
+  planned_burn_hours: number;
+  actual_burn_hours: number;
+  capacity_hours: number;
+  sprint_index: number;
+  date: string;
 }
 
 export interface ProjectDashboard {
@@ -196,11 +237,14 @@ export interface EmployeeTimelineEntry {
   year: number;
   month: number;
   total_hours: number;
-  allocations?: Array<{
-    assignment_id?: number;
+  standard_hours: number;
+  fte_percentage: number;
+  available_hours: number;
+  allocations: Array<{
     project_id: number;
     project_name: string;
     allocated_hours: number;
+    assignment_id?: number;
   }>;
 }
 
@@ -215,6 +259,8 @@ export interface UtilizationByRoleItem {
   role_name?: string;
   total_hours: number;
   fte_percentage?: number;
+  funded_hours?: number;
+  assignment_count?: number;
 }
 
 export interface UtilizationByRoleResponse {
@@ -237,19 +283,21 @@ export interface ChatQueryResponse {
 
 export interface StaffingRecommendationRequestPayload {
   project_id: number;
-  role_id: number;
+  role_id?: number;
+  lcat_id?: number;
   year: number;
   month: number;
   required_hours: number;
 }
 
 export interface StaffingRecommendationCandidate {
-  user_id?: number;
-  full_name?: string;
-  current_fte?: number;
-  skills?: string[];
-  reasoning?: string;
-  [key: string]: unknown;
+  user_id: number;
+  full_name: string;
+  email?: string;
+  manager_id?: number | null;
+  current_fte: number;
+  allocated_hours: number;
+  available_hours: number;
 }
 
 export interface StaffingRecommendationResponse {
@@ -257,24 +305,69 @@ export interface StaffingRecommendationResponse {
   reasoning: string;
 }
 
+export interface ConflictProjectBreakdown {
+  project_id?: number | null;
+  project_name: string;
+  hours: number;
+}
+
+export interface ConflictDetail {
+  user_id: number;
+  employee: string;
+  month: string;
+  total_hours: number;
+  fte: number;
+  projects: ConflictProjectBreakdown[];
+}
+
 export interface ConflictsResponse {
-  conflicts: Array<Record<string, unknown>>;
-  message?: string;
+  conflicts: ConflictDetail[];
+  message: string;
+}
+
+export interface ForecastPrediction {
+  month: string;
+  projected_capacity_hours: number;
+  projected_allocated_hours: number;
+  surplus_hours: number;
+  risk: string;
 }
 
 export interface ForecastResponse {
   forecast_period_months: number;
-  predictions: Array<Record<string, unknown>>;
-  message?: string;
+  predictions: ForecastPrediction[];
+  message: string;
+}
+
+export interface BalanceSuggestion {
+  action: string;
+  from_employee?: string;
+  to_employee?: string;
+  recommended_hours: number;
 }
 
 export interface BalanceSuggestionsResponse {
-  suggestions: Array<Record<string, unknown>>;
-  message?: string;
+  suggestions: BalanceSuggestion[];
+  message: string;
 }
 
 export interface ReindexResponse {
   status: string;
   message: string;
+}
+
+export interface ProjectViewer {
+  id: number;
+  project_id: number;
+  user_id: number;
+  granted_by_id?: number | null;
+  created_at: string;
+  user: UserSummary;
+}
+
+export interface ProjectViewerCreateInput {
+  project_id: number;
+  user_id: number;
+  granted_by_id?: number | null;
 }
 

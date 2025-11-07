@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Pencil, Sparkles, Trash2 } from 'lucide-react';
 
 import type {
   Allocation,
@@ -31,6 +31,9 @@ interface AllocationGridProps {
     baselineHours: number;
     override?: MonthlyHourOverride;
   }) => void;
+  onEditAssignment: (assignment: ProjectAssignment) => void;
+  onDistributeHours: (assignment: ProjectAssignment) => void;
+  onRemoveAssignment: (assignment: ProjectAssignment) => void;
 }
 
 interface CellKey {
@@ -43,19 +46,56 @@ const cellKey = ({ assignmentId, year, month }: CellKey) => `${assignmentId}-${y
 
 const formatHours = (value: number) => `${value.toFixed(0)} hrs`;
 
-function AssignmentSummary({ assignment, values }: { assignment: ProjectAssignment; values: Record<string, number> }) {
+function AssignmentSummary({
+  assignment,
+  values,
+  onEdit,
+  onDistribute,
+  onRemove
+}: {
+  assignment: ProjectAssignment;
+  values: Record<string, number>;
+  onEdit: (assignment: ProjectAssignment) => void;
+  onDistribute: (assignment: ProjectAssignment) => void;
+  onRemove: (assignment: ProjectAssignment) => void;
+}) {
   const monthlyKeys = Object.keys(values).filter((key) => key.startsWith(`${assignment.id}-`));
   const totalAllocated = monthlyKeys.reduce((sum, key) => sum + (values[key] ?? 0), 0);
   const remaining = assignment.funded_hours - totalAllocated;
   const isOverBudget = remaining < 0;
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm">
-      <div className="flex flex-col">
-        <span className="font-medium text-slate-700">{assignment.user.full_name}</span>
-        <span className="text-xs text-slate-500">
-          {assignment.role.name} · {assignment.lcat.name}
-        </span>
+    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col">
+          <span className="font-medium text-slate-700">{assignment.user.full_name}</span>
+          <span className="text-xs text-slate-500">
+            {assignment.role.name} · {assignment.lcat.name}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => onEdit(assignment)}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-600"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => onDistribute(assignment)}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Auto-fill
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(assignment)}
+            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Remove
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-4 text-xs">
         <div className="flex flex-col text-right">
@@ -100,7 +140,16 @@ function getUserTotal(userTotals: Record<string, number>, userId: number, year: 
   return userTotals[`${userId}-${year}-${month}`];
 }
 
-export default function AllocationGrid({ project, viewMode, onChangeHours, userTotals, onRequestOverride }: AllocationGridProps) {
+export default function AllocationGrid({
+  project,
+  viewMode,
+  onChangeHours,
+  userTotals,
+  onRequestOverride,
+  onEditAssignment,
+  onDistributeHours,
+  onRemoveAssignment
+}: AllocationGridProps) {
   const [cellValues, setCellValues] = useState<Record<string, number>>(() => computeInitialValues(project.assignments));
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [pendingCells, setPendingCells] = useState<Record<string, boolean>>({});
@@ -166,8 +215,8 @@ export default function AllocationGrid({ project, viewMode, onChangeHours, userT
   };
 
   const renderMonthlyView = () => (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse text-sm">
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-full border-collapse text-sm">
         <thead>
           <tr className="bg-slate-50">
             <th className="sticky left-0 z-10 w-64 border border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-600">
@@ -209,7 +258,13 @@ export default function AllocationGrid({ project, viewMode, onChangeHours, userT
           {project.assignments.map((assignment) => (
             <tr key={assignment.id} className="bg-white">
               <td className="sticky left-0 z-10 border border-slate-200 bg-white px-4 py-4 align-top">
-                <AssignmentSummary assignment={assignment} values={cellValues} />
+                <AssignmentSummary
+                  assignment={assignment}
+                  values={cellValues}
+                  onEdit={onEditAssignment}
+                  onDistribute={onDistributeHours}
+                  onRemove={onRemoveAssignment}
+                />
               </td>
               {months.map(({ year, month }) => {
                 const key = cellKey({ assignmentId: assignment.id, year, month });
@@ -269,8 +324,8 @@ export default function AllocationGrid({ project, viewMode, onChangeHours, userT
     }, {});
 
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-sm">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-50">
               <th className="sticky left-0 z-10 w-64 border border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-600">
@@ -288,7 +343,13 @@ export default function AllocationGrid({ project, viewMode, onChangeHours, userT
             {project.assignments.map((assignment) => (
               <tr key={assignment.id} className="bg-white">
                 <td className="sticky left-0 z-10 border border-slate-200 bg-white px-4 py-4 align-top">
-                  <AssignmentSummary assignment={assignment} values={cellValues} />
+                  <AssignmentSummary
+                    assignment={assignment}
+                    values={cellValues}
+                    onEdit={onEditAssignment}
+                    onDistribute={onDistributeHours}
+                    onRemove={onRemoveAssignment}
+                  />
                 </td>
                 {sprintTimeline.map((sprint) => {
                   const key = `${assignment.id}-${sprint.index}`;

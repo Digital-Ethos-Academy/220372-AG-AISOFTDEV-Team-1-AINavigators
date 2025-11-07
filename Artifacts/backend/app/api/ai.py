@@ -1,25 +1,26 @@
-"""
-AI-powered features API endpoints.
+"""AI-powered features API endpoints for StaffAlloc."""
 
-This module provides endpoints for:
-- RAG (Retrieval-Augmented Generation) chat queries - US009, US010
-- AI agent recommendations for staffing - US013
-- Conflict resolution suggestions - US014
-- Resource forecasting - US015
-- Workload balancing suggestions - US020
+from __future__ import annotations
 
-NOTE: This is a placeholder implementation for the MVP. Full AI integration
-with Ollama and ChromaDB will be implemented in a future phase.
-"""
 import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
-from app import crud, schemas
+from app import crud
 from app.db.session import get_db
+from app.services.ai import (
+    GeminiConfigurationError,
+    GeminiInvocationError,
+    generate_chat_response,
+    generate_forecast_insights,
+    generate_workload_balance_suggestions,
+    recommend_staffing_options,
+    reindex_rag_cache,
+    scan_allocation_conflicts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,258 +31,262 @@ router = APIRouter(
 )
 
 
-# ======================================================================================
-# Request/Response Models for AI Endpoints
-# ======================================================================================
-
 class ChatQueryRequest(BaseModel):
-    """Request model for RAG chat queries."""
-    query: str = Field(..., description="The user's question or query", min_length=3)
-    context_limit: int = Field(5, description="Number of context documents to retrieve", ge=1, le=20)
+    query: str = Field(..., description="The user's question", min_length=3)
+    context_limit: int = Field(
+        5,
+        description="Number of context documents to retrieve",
+        ge=1,
+        le=20,
+    )
 
 
 class ChatQueryResponse(BaseModel):
-    """Response model for RAG chat queries."""
     query: str
     answer: str
-    sources: List[str] = []
+    sources: List[str] = Field(default_factory=list)
 
 
 class StaffingRecommendationRequest(BaseModel):
-    """Request model for staffing recommendations."""
     project_id: int
-    role_id: int
-    year: int
-    month: int
-    required_hours: int
+    role_id: Optional[int] = Field(None, description="Filter by role ID")
+    lcat_id: Optional[int] = Field(None, description="Filter by LCAT ID")
+    year: int = Field(..., ge=2020, le=2050)
+    month: int = Field(..., ge=1, le=12)
+    required_hours: int = Field(..., ge=1)
+
+
+class StaffingRecommendationCandidate(BaseModel):
+    user_id: int
+    full_name: str
+    email: Optional[EmailStr] = None
+    manager_id: Optional[int] = None
+    current_fte: float
+    allocated_hours: int
+    available_hours: int
 
 
 class StaffingRecommendationResponse(BaseModel):
-    """Response model for staffing recommendations."""
-    candidates: List[dict] = Field(
-        default_factory=list,
-        description="List of recommended employees with their availability"
-    )
+    candidates: List[StaffingRecommendationCandidate] = Field(default_factory=list)
     reasoning: str
 
 
-# ======================================================================================
-# RAG Chat Endpoints - US009, US010
-# ======================================================================================
+class ConflictProjectBreakdown(BaseModel):
+    project_id: Optional[int]
+    project_name: str
+    hours: int
+
+
+class ConflictDetail(BaseModel):
+    user_id: int
+    employee: str
+    month: str
+    total_hours: int
+    fte: float
+    projects: List[ConflictProjectBreakdown] = Field(default_factory=list)
+
+
+class ConflictsResponse(BaseModel):
+    conflicts: List[ConflictDetail] = Field(default_factory=list)
+    message: str
+
+
+class ForecastPrediction(BaseModel):
+    month: str
+    projected_capacity_hours: int
+    projected_allocated_hours: int
+    surplus_hours: int
+    risk: str
+
+
+class ForecastResponse(BaseModel):
+    forecast_period_months: int
+    predictions: List[ForecastPrediction] = Field(default_factory=list)
+    message: str
+
+
+class BalanceSuggestion(BaseModel):
+    action: str
+    from_employee: Optional[str] = None
+    to_employee: Optional[str] = None
+    recommended_hours: int
+
+
+class BalanceSuggestionsResponse(BaseModel):
+    suggestions: List[BalanceSuggestion] = Field(default_factory=list)
+    message: str
+
+
+class ReindexResponse(BaseModel):
+    status: str
+    message: str
+
+
+def _raise_from_ai_error(exc: Exception) -> None:
+    if isinstance(exc, GeminiConfigurationError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    if isinstance(exc, GeminiInvocationError):
+        logger.exception("Gemini invocation failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI service temporarily unavailable. Try again shortly.",
+        ) from exc
+    raise exc
+
 
 @router.post(
     "/chat",
     response_model=ChatQueryResponse,
     summary="Query the AI assistant using RAG",
 )
-def chat_query(request: ChatQueryRequest, db: Session = Depends(get_db)):
-    """
-    Send a natural language query to the AI assistant.
-    
-    The AI uses Retrieval-Augmented Generation (RAG) to answer questions
-    about projects, employees, allocations, and resource utilization.
-    
-    Examples:
-    - "What is John Smith's total allocation for Q4?"
-    - "Show me all Cyber Analysts with less than 50% FTE in November"
-    - "Which projects is Sarah working on?"
-    
-    Supports US009 and US010.
-    
-    NOTE: This is a placeholder. Full implementation will integrate with
-    Ollama for LLM generation and ChromaDB for vector search.
-    """
-    # Placeholder implementation
-    # TODO: Implement actual RAG pipeline with:
-    # 1. Convert query to embedding using sentence-transformer
-    # 2. Search ChromaDB for relevant context
-    # 3. Construct prompt with query + context
-    # 4. Send to Ollama LLM for generation
-    # 5. Return formatted response
-    
-    logger.info(f"Received AI chat query: {request.query}")
-    
-    return ChatQueryResponse(
-        query=request.query,
-        answer="AI chat functionality is not yet implemented. This is a placeholder response.",
-        sources=[]
-    )
+def chat_query(request: ChatQueryRequest, db: Session = Depends(get_db)) -> ChatQueryResponse:
+    logger.info("AI chat query received", extra={"query": request.query})
+    try:
+        answer, sources = generate_chat_response(
+            db, query=request.query, context_limit=request.context_limit
+        )
+    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover - error paths
+        _raise_from_ai_error(exc)
+    return ChatQueryResponse(query=request.query, answer=answer, sources=sources)
 
-
-# ======================================================================================
-# AI Recommendations - US013
-# ======================================================================================
 
 @router.post(
     "/recommend-staff",
     response_model=StaffingRecommendationResponse,
-    summary="Get AI recommendations for staffing a role",
+    summary="Get AI recommendations for staffing",
 )
 def recommend_staff(
-    request: StaffingRecommendationRequest, db: Session = Depends(get_db)
-):
-    """
-    Get AI-powered recommendations for employees to fill a role on a project.
-    
-    The AI considers:
-    - Employee's current FTE across all projects
-    - Matching role/skills
-    - Historical performance
-    - Availability in the requested time period
-    
-    Supports US013: Recommend suitable employees for a role.
-    
-    NOTE: This is a placeholder. Full implementation will use the AI service
-    layer with database queries and LLM-powered ranking.
-    """
-    # Validate that project and role exist
-    if not crud.get_project(db, request.project_id):
+    request: StaffingRecommendationRequest,
+    db: Session = Depends(get_db),
+) -> StaffingRecommendationResponse:
+    project = crud.get_project(db, request.project_id)
+    if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID {request.project_id} not found"
+            detail=f"Project with ID {request.project_id} not found",
         )
-    if not crud.get_role(db, request.role_id):
+
+    if request.role_id is not None and not crud.get_role(db, request.role_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role with ID {request.role_id} not found"
+            detail=f"Role with ID {request.role_id} not found",
         )
-    
-    # Placeholder implementation
-    # TODO: Implement actual recommendation logic:
-    # 1. Query users with matching role
-    # 2. Calculate their current FTE for the requested month
-    # 3. Filter by availability threshold
-    # 4. Use LLM to rank and explain recommendations
-    
-    logger.info(f"Generating staffing recommendations for project {request.project_id}, role {request.role_id}")
-    
-    return StaffingRecommendationResponse(
-        candidates=[],
-        reasoning="Staffing recommendation functionality is not yet implemented."
-    )
 
+    if request.lcat_id is not None and not crud.get_lcat(db, request.lcat_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LCAT with ID {request.lcat_id} not found",
+        )
 
-# ======================================================================================
-# Conflict Detection and Resolution - US014
-# ======================================================================================
+    try:
+        candidates, reasoning = recommend_staffing_options(
+            db,
+            project_id=request.project_id,
+            year=request.year,
+            month=request.month,
+            required_hours=request.required_hours,
+            role_id=request.role_id,
+            lcat_id=request.lcat_id,
+        )
+    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover - error paths
+        _raise_from_ai_error(exc)
+
+    candidate_models = [
+        StaffingRecommendationCandidate(**candidate) for candidate in candidates
+    ]
+    return StaffingRecommendationResponse(candidates=candidate_models, reasoning=reasoning)
+
 
 @router.get(
     "/conflicts",
+    response_model=ConflictsResponse,
     summary="Detect resource allocation conflicts",
 )
-def detect_conflicts(db: Session = Depends(get_db)):
-    """
-    Detect employees who are over-allocated (>100% FTE) across projects.
-    
-    Returns a list of conflicts with suggested resolutions.
-    
-    Supports US014: Detect and suggest resolutions for over-allocations.
-    
-    NOTE: This is a placeholder. Full implementation will:
-    1. Query all users' monthly allocations
-    2. Calculate FTE percentages
-    3. Identify conflicts (>100% FTE)
-    4. Use AI to suggest resolution strategies
-    """
-    logger.info("Checking for allocation conflicts")
-    
-    # Placeholder
-    return {
-        "conflicts": [],
-        "message": "Conflict detection functionality is not yet implemented."
-    }
+def detect_conflicts(db: Session = Depends(get_db)) -> ConflictsResponse:
+    try:
+        conflicts, message = scan_allocation_conflicts(db)
+    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
+        _raise_from_ai_error(exc)
 
+    conflict_models = [
+        ConflictDetail(
+            user_id=conflict["user_id"],
+            employee=conflict["employee"],
+            month=conflict["month"],
+            total_hours=conflict["total_hours"],
+            fte=conflict["fte"],
+            projects=[
+                ConflictProjectBreakdown(
+                    project_id=item.get("project_id"),
+                    project_name=item.get("project_name") or "Unknown",
+                    hours=item.get("hours", 0),
+                )
+                for item in conflict.get("projects", [])
+            ],
+        )
+        for conflict in conflicts
+    ]
+    return ConflictsResponse(conflicts=conflict_models, message=message)
 
-# ======================================================================================
-# Resource Forecasting - US015
-# ======================================================================================
 
 @router.get(
     "/forecast",
+    response_model=ForecastResponse,
     summary="Get predictive resource forecasts",
 )
 def get_forecast(
-    months_ahead: int = 3,
-    db: Session = Depends(get_db)
-):
-    """
-    Generate predictive forecasts for resource needs.
-    
-    Analyzes current project pipeline and staffing trends to predict
-    future hiring needs or resource shortages.
-    
-    Supports US015: Predictive resource forecasting.
-    
-    NOTE: This is a placeholder. Full implementation will use historical
-    data and ML models to forecast future resource needs.
-    """
-    logger.info(f"Generating resource forecast for {months_ahead} months ahead")
-    
-    return {
-        "forecast_period_months": months_ahead,
-        "predictions": [],
-        "message": "Forecasting functionality is not yet implemented."
-    }
+    months_ahead: int = 3, db: Session = Depends(get_db)
+) -> ForecastResponse:
+    try:
+        predictions, message = generate_forecast_insights(
+            db, months_ahead=months_ahead
+        )
+    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
+        _raise_from_ai_error(exc)
 
+    prediction_models = [
+        ForecastPrediction(**prediction) for prediction in predictions
+    ]
+    return ForecastResponse(
+        forecast_period_months=months_ahead,
+        predictions=prediction_models,
+        message=message,
+    )
 
-# ======================================================================================
-# Workload Balancing - US020
-# ======================================================================================
 
 @router.get(
     "/balance-suggestions",
-    summary="Get workload balancing suggestions",
+    response_model=BalanceSuggestionsResponse,
+    summary="Get workload balance suggestions",
 )
 def get_balance_suggestions(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Get AI suggestions for balancing workload across the team.
-    
-    Identifies imbalances (some employees overloaded, others underutilized)
-    and suggests ways to redistribute work.
-    
-    Supports US020: Workload balancing opportunities.
-    
-    NOTE: This is a placeholder. Full implementation will analyze
-    FTE distributions and suggest specific reallocations.
-    """
-    logger.info(f"Generating workload balance suggestions for project {project_id or 'all'}")
-    
-    return {
-        "suggestions": [],
-        "message": "Workload balancing functionality is not yet implemented."
-    }
+    db: Session = Depends(get_db),
+) -> BalanceSuggestionsResponse:
+    try:
+        suggestions, message = generate_workload_balance_suggestions(
+            db, project_id=project_id
+        )
+    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
+        _raise_from_ai_error(exc)
 
+    suggestion_models = [
+        BalanceSuggestion(**suggestion) for suggestion in suggestions
+    ]
+    return BalanceSuggestionsResponse(suggestions=suggestion_models, message=message)
 
-# ======================================================================================
-# RAG Index Management (for background jobs)
-# ======================================================================================
 
 @router.post(
     "/reindex",
+    response_model=ReindexResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Trigger RAG cache reindexing",
 )
-def trigger_reindex(db: Session = Depends(get_db)):
-    """
-    Manually trigger a full reindex of the RAG cache.
-    
-    This endpoint would normally trigger a background job to:
-    1. Extract all relevant data from the database
-    2. Generate text documents for each entity
-    3. Create embeddings
-    4. Store in ChromaDB
-    
-    In production, this would be handled by APScheduler running periodically.
-    
-    NOTE: This is a placeholder for the MVP.
-    """
-    logger.info("RAG reindex triggered (placeholder)")
-    
-    return {
-        "status": "accepted",
-        "message": "Reindexing functionality is not yet implemented. This would be handled by a background job."
-    }
+def trigger_reindex(db: Session = Depends(get_db)) -> ReindexResponse:
+    documents_created = reindex_rag_cache(db)
+    message = f"RAG cache refreshed with {documents_created} documents."
+    return ReindexResponse(status="accepted", message=message)
 

@@ -1,0 +1,6 @@
+Requirement already satisfied: openpyxl in c:\users\640109\t1capstone\artifacts\backend\venv\lib\site-packages (3.1.5)
+Requirement already satisfied: et-xmlfile in c:\users\640109\t1capstone\artifacts\backend\venv\lib\site-packages (from openpyxl) (2.0.0)
+
+[notice] A new release of pip is available: 25.2 -> 25.3
+[notice] To update, run: C:\Users\640109\T1Capstone\Artifacts\backend\venv\Scripts\python.exe -m pip install --upgrade pip
+ERROR: Operation cancelled by user

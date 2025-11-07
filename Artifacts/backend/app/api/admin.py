@@ -60,12 +60,20 @@ def create_role(role: schemas.RoleCreate, db: Session = Depends(get_db)):
 def read_roles(
     skip: int = 0,
     limit: int = Query(default=100, lte=200),
+    owner_id: Optional[int] = Query(None, description="Filter by owning manager ID"),
+    include_global: bool = Query(True, description="Include shared/global roles when filtering"),
     db: Session = Depends(get_db),
 ):
     """
     Retrieve a list of all available job roles.
     """
-    roles = crud.get_roles(db, skip=skip, limit=limit)
+    roles = crud.get_roles(
+        db,
+        skip=skip,
+        limit=limit,
+        owner_id=owner_id,
+        include_global=include_global,
+    )
     return roles
 
 
@@ -147,12 +155,20 @@ def create_lcat(lcat: schemas.LCATCreate, db: Session = Depends(get_db)):
 def read_lcats(
     skip: int = 0,
     limit: int = Query(default=100, lte=200),
+    owner_id: Optional[int] = Query(None, description="Filter by owning manager ID"),
+    include_global: bool = Query(True, description="Include shared/global LCATs when filtering"),
     db: Session = Depends(get_db),
 ):
     """
     Retrieve a list of all available Labor Categories.
     """
-    lcats = crud.get_lcats(db, skip=skip, limit=limit)
+    lcats = crud.get_lcats(
+        db,
+        skip=skip,
+        limit=limit,
+        owner_id=owner_id,
+        include_global=include_global,
+    )
     return lcats
 
 

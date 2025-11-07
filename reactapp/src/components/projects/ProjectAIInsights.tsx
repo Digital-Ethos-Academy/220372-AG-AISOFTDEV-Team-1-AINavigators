@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Loader2, Sparkles, TriangleAlert } from 'lucide-react';
+import { Info, Loader2, Sparkles, TriangleAlert } from 'lucide-react';
 
 import {
   fetchBalanceSuggestions,
@@ -10,32 +10,44 @@ import {
 } from '../../api/ai';
 import type {
   BalanceSuggestionsResponse,
+  BalanceSuggestion,
+  ConflictDetail,
   ConflictsResponse,
+  ForecastPrediction,
   ForecastResponse,
+  LCAT,
+  Role,
   StaffingRecommendationResponse
 } from '../../types/api';
 import { Card } from '../common';
 
 interface ProjectAIInsightsProps {
   projectId: number;
+  roles: Role[];
+  lcats: LCAT[];
 }
 
-export default function ProjectAIInsights({ projectId }: ProjectAIInsightsProps) {
+export default function ProjectAIInsights({ projectId, roles, lcats }: ProjectAIInsightsProps) {
   const [recommendation, setRecommendation] = useState<StaffingRecommendationResponse | null>(null);
   const [conflicts, setConflicts] = useState<ConflictsResponse | null>(null);
   const [balance, setBalance] = useState<BalanceSuggestionsResponse | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
+  const [staffingError, setStaffingError] = useState<string | null>(null);
 
   const recommendMutation = useMutation({
-    mutationFn: (params: { roleId: number; year: number; month: number; requiredHours: number }) =>
+    mutationFn: (params: { roleId?: number; lcatId?: number; year: number; month: number; requiredHours: number }) =>
       recommendStaff({
         project_id: projectId,
         role_id: params.roleId,
+        lcat_id: params.lcatId,
         year: params.year,
         month: params.month,
         required_hours: params.requiredHours
       }),
-    onSuccess: (response) => setRecommendation(response)
+    onSuccess: (response) => {
+      setRecommendation(response);
+      setStaffingError(null);
+    }
   });
 
   const conflictsMutation = useMutation({
@@ -64,25 +76,56 @@ export default function ProjectAIInsights({ projectId }: ProjectAIInsightsProps)
           onSubmit={(event) => {
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
-            const roleId = Number(formData.get('roleId'));
+            const roleIdValue = (formData.get('roleId') as string) || '';
+            const lcatIdValue = (formData.get('lcatId') as string) || '';
             const year = Number(formData.get('year'));
             const month = Number(formData.get('month'));
             const requiredHours = Number(formData.get('requiredHours'));
-            if (roleId && year && month && requiredHours) {
-              recommendMutation.mutate({ roleId, year, month, requiredHours });
+            const roleId = roleIdValue ? Number(roleIdValue) : undefined;
+            const lcatId = lcatIdValue ? Number(lcatIdValue) : undefined;
+
+            setStaffingError(null);
+
+            if (!roleId && !lcatId) {
+              setStaffingError('Select at least a role or an LCAT to guide the recommendation.');
+              return;
+            }
+
+            if (year && month && requiredHours) {
+              recommendMutation.mutate({ roleId, lcatId, year, month, requiredHours });
             }
           }}
         >
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Role ID
-              <input
+              Role
+              <select
                 name="roleId"
-                type="number"
-                min={1}
                 className="mt-1 rounded border border-slate-200 px-2 py-1 text-sm text-slate-700"
-                placeholder="e.g. 3"
-              />
+                defaultValue=""
+              >
+                <option value="">Any role</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Labor category
+              <select
+                name="lcatId"
+                className="mt-1 rounded border border-slate-200 px-2 py-1 text-sm text-slate-700"
+                defaultValue=""
+              >
+                <option value="">Any LCAT</option>
+                {lcats.map((lcat) => (
+                  <option key={lcat.id} value={lcat.id}>
+                    {lcat.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
               Required hours
@@ -125,17 +168,28 @@ export default function ProjectAIInsights({ projectId }: ProjectAIInsightsProps)
             Suggest staffing
           </button>
         </form>
+        {staffingError && (
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <Info className="h-4 w-4" />
+            {staffingError}
+          </div>
+        )}
         {recommendation && (
           <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
             <p className="font-semibold">AI Recommendations</p>
             {recommendation.candidates.length === 0 ? (
               <p>No available candidates for this window.</p>
             ) : (
-              <ul className="space-y-1">
-                {recommendation.candidates.map((candidate, index) => (
-                  <li key={index}>
-                    {candidate.full_name ?? 'Candidate'} · {Math.round((candidate.current_fte ?? 0) * 100)}% FTE{' '}
-                    {candidate.skills && candidate.skills.length > 0 ? `· Skills: ${candidate.skills.join(', ')}` : ''}
+              <ul className="space-y-2">
+                {recommendation.candidates.map((candidate) => (
+                  <li
+                    key={candidate.user_id}
+                    className="rounded-md border border-blue-200 bg-white px-3 py-2 text-slate-700"
+                  >
+                    <p className="font-semibold text-blue-700">{candidate.full_name}</p>
+                    <p className="text-xs text-slate-500">
+                      Current FTE {Math.round(candidate.current_fte * 100)}% · Allocated {candidate.allocated_hours}h · Available {candidate.available_hours}h
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -175,22 +229,64 @@ export default function ProjectAIInsights({ projectId }: ProjectAIInsightsProps)
 
         <div className="mt-3 space-y-3 text-xs text-slate-600">
           {conflictsMutation.isPending && <p>Checking for conflicts…</p>}
-          {conflicts?.conflicts && conflicts.conflicts.length > 0 && (
-            <pre className="max-h-36 overflow-y-auto rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">
-              {JSON.stringify(conflicts.conflicts, null, 2)}
-            </pre>
+          {conflicts && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[11px] font-semibold text-amber-700">{conflicts.message}</p>
+              {conflicts.conflicts.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {conflicts.conflicts.map((conflict: ConflictDetail) => (
+                    <li key={`${conflict.user_id}-${conflict.month}`} className="rounded-md border border-amber-200 bg-white px-3 py-2">
+                      <p className="font-semibold text-amber-700">
+                        {conflict.employee} · {conflict.month} · {(conflict.fte * 100).toFixed(1)}% FTE
+                      </p>
+                      <ul className="mt-1 space-y-1 text-[11px] text-slate-600">
+                        {conflict.projects.map((project, index) => (
+                          <li key={`${project.project_id ?? index}-${project.project_name}`}>
+                            {project.project_name}: {project.hours}h
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
           {balanceMutation.isPending && <p>Generating balancing suggestions…</p>}
-          {balance?.suggestions && balance.suggestions.length > 0 && (
-            <pre className="max-h-36 overflow-y-auto rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">
-              {JSON.stringify(balance.suggestions, null, 2)}
-            </pre>
+          {balance && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-[11px] font-semibold text-emerald-700">{balance.message}</p>
+              {balance.suggestions.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {balance.suggestions.map((suggestion: BalanceSuggestion, index) => (
+                    <li key={`${suggestion.action}-${index}`} className="rounded-md border border-emerald-200 bg-white px-3 py-2">
+                      <p className="text-[11px] text-slate-600">
+                        Shift {suggestion.recommended_hours}h from {suggestion.from_employee ?? '—'} to {suggestion.to_employee ?? '—'} ({suggestion.action})
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
           {forecastMutation.isPending && <p>Calculating forecast…</p>}
-          {forecast?.predictions && forecast.predictions.length > 0 && (
-            <pre className="max-h-36 overflow-y-auto rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">
-              {JSON.stringify(forecast.predictions, null, 2)}
-            </pre>
+          {forecast && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <p className="text-[11px] font-semibold text-blue-700">{forecast.message}</p>
+              {forecast.predictions.length > 0 && (
+                <ul className="mt-2 grid gap-2 text-[11px] text-slate-600">
+                  {forecast.predictions.map((prediction: ForecastPrediction) => (
+                    <li key={prediction.month} className="rounded-md border border-blue-200 bg-white px-3 py-2">
+                      <p className="font-semibold text-blue-700">{prediction.month}</p>
+                      <p>Capacity: {prediction.projected_capacity_hours}h · Allocated: {prediction.projected_allocated_hours}h</p>
+                      <p>
+                        Surplus: {prediction.surplus_hours}h · Status: <span className="uppercase">{prediction.risk}</span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       </Card>

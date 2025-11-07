@@ -140,8 +140,7 @@ asyncio>=3.4.3  # Built-in, included for documentation
 # chromadb>=0.4.0
 
 # Excel export functionality
-# openpyxl>=3.1.0
-# xlsxwriter>=3.1.0
+openpyxl>=3.1.0
 
 # ============================================================================
 # Version Information

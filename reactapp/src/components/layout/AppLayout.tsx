@@ -27,11 +27,11 @@ export default function AppLayout() {
     { to: '/teams', label: 'Teams', icon: Users },
     { to: '/ai/chat', label: 'AI Assistant', icon: Sparkles, roles: ['Admin', 'Director', 'PM'] },
     { to: '/ai/recommendations', label: 'AI Insights', icon: Sparkles, roles: ['Admin', 'Director'] },
-    { to: '/settings/roles-lcats', label: 'Settings', icon: Settings, roles: ['Admin'] }
+    { to: '/settings/roles-lcats', label: 'Settings', icon: Settings, roles: ['Admin', 'PM', 'Director'] }
   ];
 
   const availableNavItems = navItems.filter(
-    (item) => !item.roles || item.roles.includes(currentUser.systemRole)
+    (item) => !item.roles || (currentUser && item.roles.includes(currentUser.system_role))
   );
 
   return (

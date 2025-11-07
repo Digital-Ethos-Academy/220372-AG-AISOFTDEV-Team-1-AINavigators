@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Briefcase, Loader2, Search, Users } from 'lucide-react';
 
-import { fetchEmployees } from '../api/users';
-import type { EmployeeListItem, SystemRole } from '../types/api';
+import { createEmployee, fetchEmployees } from '../api/users';
+import type { EmployeeListItem, SystemRole, UserCreateInput } from '../types/api';
 import { Card, SectionHeader } from '../components/common';
+import { useAuth } from '../context/AuthContext';
+import AddEmployeeModal from '../components/teams/AddEmployeeModal';
 
 function roleLabel(role: SystemRole) {
   switch (role) {
@@ -89,11 +91,26 @@ function EmployeeCard({ employee }: { employee: EmployeeListItem }) {
 export default function TeamsPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<SystemRole | 'All'>('All');
+  const [isAddEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: employees = [], isLoading, isError, error } = useQuery({
-    queryKey: ['employees'],
-    queryFn: fetchEmployees,
+    queryKey: ['employees', user?.id ?? 'all'],
+    queryFn: () =>
+      fetchEmployees({
+        managerId: user?.system_role === 'PM' ? user.id : undefined,
+        includeGlobal: true
+      }),
     staleTime: 60_000
+  });
+
+  const createEmployeeMutation = useMutation({
+    mutationFn: (payload: UserCreateInput) => createEmployee(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setAddEmployeeOpen(false);
+    }
   });
 
   const uniqueRoles = useMemo<SystemRole[]>(() => {
@@ -122,10 +139,22 @@ export default function TeamsPage() {
         title="Team Members"
         description="Manage employee profiles, availability, and staffing context."
         action={
-          <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-            <Users className="h-3.5 w-3.5" />
-            {employees.length} total employees
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              <Users className="h-3.5 w-3.5" />
+              {employees.length} total employees
+            </span>
+            {user?.system_role === 'PM' && (
+              <button
+                type="button"
+                onClick={() => setAddEmployeeOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Users className="h-4 w-4" />
+                Add Employee
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -229,6 +258,17 @@ export default function TeamsPage() {
             </div>
           )}
         </>
+      )}
+
+      {user && (
+        <AddEmployeeModal
+          open={isAddEmployeeOpen}
+          submitting={createEmployeeMutation.isPending}
+          managerId={user.id}
+          error={createEmployeeMutation.error instanceof Error ? createEmployeeMutation.error.message : null}
+          onSubmit={(values) => createEmployeeMutation.mutate(values)}
+          onClose={() => setAddEmployeeOpen(false)}
+        />
       )}
     </div>
   );

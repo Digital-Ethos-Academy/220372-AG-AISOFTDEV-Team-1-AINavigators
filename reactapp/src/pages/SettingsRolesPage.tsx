@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Shield, Trash2 } from 'lucide-react';
+import { CopyPlus, Pencil, Plus, Shield, Trash2 } from 'lucide-react';
 
 import {
   createLCAT,
@@ -14,6 +14,8 @@ import {
 } from '../api/admin';
 import type { LCAT, LCATInput, Role, RoleInput } from '../types/api';
 import { Card, SectionHeader } from '../components/common';
+import { useAuth } from '../context/AuthContext';
+import BulkImportModal from '../components/projects/BulkImportModal';
 
 interface RoleFormState {
   id: number | null;
@@ -184,12 +186,30 @@ function LCATForm({
 
 export default function SettingsRolesPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: fetchRoles, staleTime: 60_000 });
-  const lcatsQuery = useQuery({ queryKey: ['lcats'], queryFn: fetchLCATs, staleTime: 60_000 });
+  const ownerId = user?.system_role === 'PM' ? user.id : undefined;
+
+  const rolesQuery = useQuery({
+    queryKey: ['roles', ownerId ?? 'all'],
+    queryFn: () => fetchRoles({ ownerId, includeGlobal: true }),
+    staleTime: 60_000,
+    enabled: Boolean(user)
+  });
+  const lcatsQuery = useQuery({
+    queryKey: ['lcats', ownerId ?? 'all'],
+    queryFn: () => fetchLCATs({ ownerId, includeGlobal: true }),
+    staleTime: 60_000,
+    enabled: Boolean(user)
+  });
 
   const [roleForm, setRoleForm] = useState<RoleFormState>(emptyRoleForm);
   const [lcatForm, setLcatForm] = useState<LCATFormState>(emptyLCATForm);
+  const [isRoleBulkOpen, setRoleBulkOpen] = useState(false);
+  const [isLcatBulkOpen, setLcatBulkOpen] = useState(false);
+  const [roleBulkError, setRoleBulkError] = useState<string | null>(null);
+  const [lcatBulkError, setLcatBulkError] = useState<string | null>(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const createRoleMutation = useMutation({
     mutationFn: (payload: RoleInput) => createRole(payload),
@@ -249,7 +269,8 @@ export default function SettingsRolesPage() {
   const handleRoleSubmit = async (formState: RoleFormState) => {
     const payload: RoleInput = {
       name: formState.name.trim(),
-      description: formState.description.trim() || undefined
+      description: formState.description.trim() || undefined,
+      owner_id: ownerId
     };
 
     if (!payload.name) return;
@@ -264,7 +285,8 @@ export default function SettingsRolesPage() {
   const handleLCATSubmit = async (formState: LCATFormState) => {
     const payload: LCATInput = {
       name: formState.name.trim(),
-      description: formState.description.trim() || undefined
+      description: formState.description.trim() || undefined,
+      owner_id: ownerId
     };
 
     if (!payload.name) return;
@@ -283,13 +305,7 @@ export default function SettingsRolesPage() {
     <div className="space-y-8">
       <SectionHeader
         title="Roles & LCATs"
-        description="Standardise staffing taxonomy so portfolio roll-ups stay consistent across projects."
-        action={
-          <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-            <Shield className="h-3.5 w-3.5" />
-            Admin access required
-          </span>
-        }
+        description="Define job roles and labor categories for your projects. Use the forms below to add items individually, or click 'Bulk add' to paste many at once."
       />
 
       <section className="grid gap-6 lg:grid-cols-2">
@@ -307,7 +323,22 @@ export default function SettingsRolesPage() {
             />
           </Card>
 
-          <Card title="Existing Roles" description={`${roleUsageCount} roles available to project teams`}>
+          <Card
+            title="Existing Roles"
+            description={`${roleUsageCount} roles available to project teams`}
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  setRoleBulkOpen(true);
+                  setRoleBulkError(null);
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-600"
+              >
+                <CopyPlus className="h-3.5 w-3.5" /> Bulk add
+              </button>
+            }
+          >
             {rolesQuery.isLoading ? (
               <p className="text-sm text-slate-500">Loading roles…</p>
             ) : rolesQuery.isError ? (
@@ -371,7 +402,22 @@ export default function SettingsRolesPage() {
             />
           </Card>
 
-          <Card title="Existing LCATs" description={`${lcatUsageCount} labor categories configured`}>
+          <Card
+            title="Existing LCATs"
+            description={`${lcatUsageCount} labor categories configured`}
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  setLcatBulkOpen(true);
+                  setLcatBulkError(null);
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600"
+              >
+                <CopyPlus className="h-3.5 w-3.5" /> Bulk add
+              </button>
+            }
+          >
             {lcatsQuery.isLoading ? (
               <p className="text-sm text-slate-500">Loading labor categories…</p>
             ) : lcatsQuery.isError ? (
@@ -421,6 +467,74 @@ export default function SettingsRolesPage() {
           </Card>
         </div>
       </section>
+
+      <BulkImportModal
+        open={isRoleBulkOpen}
+        title="Bulk add roles"
+        description="Paste one role name per line. Optional descriptions can follow a pipe, e.g. 'Data Scientist | Machine learning expertise'."
+        placeholder={`Software Engineer | Core platform work\nUX Designer\nQA Analyst`}
+        submitting={bulkSubmitting}
+        error={roleBulkError}
+        onSubmit={async (lines) => {
+          setBulkSubmitting(true);
+          setRoleBulkError(null);
+          try {
+            for (const line of lines) {
+              const [namePart, descriptionPart] = line.split('|').map((part) => part.trim());
+              if (!namePart) continue;
+              await createRoleMutation.mutateAsync({
+                name: namePart,
+                description: descriptionPart || undefined,
+                owner_id: ownerId
+              });
+            }
+            setRoleBulkOpen(false);
+          } catch (bulkError) {
+            setRoleBulkError(bulkError instanceof Error ? bulkError.message : 'Failed to import roles.');
+          } finally {
+            setBulkSubmitting(false);
+          }
+        }}
+        onClose={() => {
+          setRoleBulkOpen(false);
+          setRoleBulkError(null);
+          setBulkSubmitting(false);
+        }}
+      />
+
+      <BulkImportModal
+        open={isLcatBulkOpen}
+        title="Bulk add LCATs"
+        description="Paste one labor category per line. Add optional descriptions after a pipe."
+        placeholder={`Level 1 | Entry-level support\nSenior Consultant`}
+        submitting={bulkSubmitting}
+        error={lcatBulkError}
+        onSubmit={async (lines) => {
+          setBulkSubmitting(true);
+          setLcatBulkError(null);
+          try {
+            for (const line of lines) {
+              const [namePart, descriptionPart] = line.split('|').map((part) => part.trim());
+              if (!namePart) continue;
+              await createLCATMutation.mutateAsync({
+                name: namePart,
+                description: descriptionPart || undefined,
+                owner_id: ownerId
+              });
+            }
+            setLcatBulkOpen(false);
+          } catch (bulkError) {
+            setLcatBulkError(bulkError instanceof Error ? bulkError.message : 'Failed to import LCATs.');
+          } finally {
+            setBulkSubmitting(false);
+          }
+        }}
+        onClose={() => {
+          setLcatBulkOpen(false);
+          setLcatBulkError(null);
+          setBulkSubmitting(false);
+        }}
+      />
     </div>
   );
 }

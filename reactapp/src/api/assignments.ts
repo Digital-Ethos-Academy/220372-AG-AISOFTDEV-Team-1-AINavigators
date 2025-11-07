@@ -2,8 +2,10 @@ import api from './client';
 import type {
   Allocation,
   AllocationInput,
+  AssignmentDistributionInput,
   ProjectAssignment,
   ProjectAssignmentCreateInput,
+  ProjectAssignmentUpdateInput,
   ProjectAssignmentWithAllocations
 } from '../types/api';
 
@@ -16,6 +18,14 @@ export async function createAssignment(
 
 export async function deleteAssignment(assignmentId: number): Promise<void> {
   await api.delete(`/allocations/assignments/${assignmentId}`);
+}
+
+export async function updateAssignment(
+  assignmentId: number,
+  payload: ProjectAssignmentUpdateInput
+): Promise<ProjectAssignment> {
+  const { data } = await api.put<ProjectAssignment>(`/allocations/assignments/${assignmentId}`, payload);
+  return data;
 }
 
 export async function fetchAssignmentAllocations(assignmentId: number): Promise<Allocation[]> {
@@ -42,5 +52,16 @@ export async function updateAllocation(
 
 export async function deleteAllocation(allocationId: number): Promise<void> {
   await api.delete(`/allocations/${allocationId}`);
+}
+
+export async function distributeAssignmentAllocations(
+  assignmentId: number,
+  payload: AssignmentDistributionInput
+): Promise<Allocation[]> {
+  const { data } = await api.post<Allocation[]>(
+    `/allocations/assignments/${assignmentId}/distribute`,
+    payload
+  );
+  return data;
 }
 

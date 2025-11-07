@@ -17,7 +17,7 @@ Key components:
 import os
 from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -99,4 +99,33 @@ def create_db_and_tables():
 
     # This will create all tables that inherit from the Base declarative class.
     Base.metadata.create_all(bind=engine)
+
+    _run_sqlite_migrations()
+
+
+def _run_sqlite_migrations() -> None:
+    """Apply minimal SQLite migrations for newly added columns."""
+
+    if engine.dialect.name != "sqlite":
+        return
+
+    def column_exists(conn, table: str, column: str) -> bool:
+        result = conn.execute(text(f"PRAGMA table_info({table})"))
+        return any(row[1] == column for row in result)
+
+    with engine.begin() as conn:
+        if not column_exists(conn, "users", "manager_id"):
+            conn.execute(text("ALTER TABLE users ADD COLUMN manager_id INTEGER"))
+
+        if not column_exists(conn, "roles", "owner_id"):
+            conn.execute(text("ALTER TABLE roles ADD COLUMN owner_id INTEGER"))
+
+        if not column_exists(conn, "lcats", "owner_id"):
+            conn.execute(text("ALTER TABLE lcats ADD COLUMN owner_id INTEGER"))
+
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_allocations_assignment ON allocations (project_assignment_id)"
+            )
+        )
 

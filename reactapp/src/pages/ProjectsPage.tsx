@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 
-import { createProject, fetchProjects } from '../api/projects';
+import { createProject, fetchProjects, importProjectsFromExcel } from '../api/projects';
+import ImportProjectsModal from '../components/projects/ImportProjectsModal';
 import CreateProjectModal from '../components/projects/CreateProjectModal';
 import ProjectTable from '../components/projects/ProjectTable';
 import { useAuth } from '../context/AuthContext';
@@ -12,11 +13,20 @@ export default function ProjectsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isImportOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<{ created: number; skipped: number } | null>(null);
+  const [isImporting, setImporting] = useState(false);
 
   const { data: projects = [], isLoading, isError, error } = useQuery({
-    queryKey: ['projects'],
-    queryFn: fetchProjects
+    queryKey: ['projects', user?.id ?? 'all'],
+    queryFn: () =>
+      fetchProjects(
+        user?.system_role === 'PM'
+          ? { managerId: user.id }
+          : {}
+      )
   });
 
   const {
@@ -41,10 +51,7 @@ export default function ProjectsPage() {
     );
   });
 
-  const visibleProjects =
-    user?.system_role === 'PM'
-      ? filteredProjects.filter((project) => project.manager_id === user.id)
-      : filteredProjects;
+  const visibleProjects = filteredProjects;
 
   const createErrorMessage = createError instanceof Error ? createError.message : null;
 
@@ -65,6 +72,17 @@ export default function ProjectsPage() {
         >
           <Plus className="h-4 w-4" />
           Create Project
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setImportError(null);
+            setImportSummary(null);
+            setImportOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+        >
+          Import from Excel
         </button>
       </header>
 
@@ -113,9 +131,53 @@ export default function ProjectsPage() {
         open={isModalOpen}
         submitting={isCreating}
         error={createErrorMessage}
-        onSubmit={handleCreateProject}
+        onSubmit={(values) =>
+          handleCreateProject({
+            ...values,
+            manager_id: user?.system_role === 'PM' ? user.id : values.manager_id
+          })
+        }
         onClose={() => setModalOpen(false)}
       />
+
+      <ImportProjectsModal
+        open={isImportOpen}
+        submitting={isImporting}
+        error={importError}
+        onSubmit={async (file) => {
+          try {
+            setImportError(null);
+            setImportSummary(null);
+            setImporting(true);
+            const response = await importProjectsFromExcel(file, user?.system_role === 'PM' ? user.id : undefined);
+            setImportSummary({ created: response.created_projects.length, skipped: response.skipped_codes.length });
+            setImportOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ['projects'] });
+          } catch (uploadError) {
+            if (uploadError instanceof Error) {
+              setImportError(uploadError.message);
+            } else {
+              setImportError('Unable to import projects. Please try again.');
+            }
+          }
+          finally {
+            setImporting(false);
+          }
+        }}
+        onClose={() => {
+          setImportOpen(false);
+          setImportError(null);
+          setImporting(false);
+        }}
+      />
+
+      {importSummary && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          Imported {importSummary.created} project{importSummary.created === 1 ? '' : 's'}. {importSummary.skipped > 0 && (
+            <span>Skipped {importSummary.skipped} existing code{importSummary.skipped === 1 ? '' : 's'}.</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ from sqlalchemy.sql import text
 from app.api import admin, ai, allocations, employees, projects, reports
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.db.session import get_db
+from app.db.session import create_db_and_tables, get_db
 
 # --- Logging Configuration (as per Architecture Document) ---
 
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
         Path(settings.SQLITE_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         Path(settings.VECTOR_STORE_PATH).mkdir(parents=True, exist_ok=True)
         Path(settings.REPORTS_PATH).mkdir(parents=True, exist_ok=True)
+        create_db_and_tables()
         logger.info(
             "Data directories ensured",
             db=str(Path(settings.SQLITE_DB_PATH).parent),

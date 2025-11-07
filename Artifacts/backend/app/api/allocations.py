@@ -13,13 +13,15 @@ This is the core of the allocation grid functionality, supporting user stories:
 - US006: Cross-project over-allocation detection
 """
 import logging
+from datetime import date as dt_date
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app import crud, schemas
+from app import crud, models, schemas
 from app.db.session import get_db
+from app.utils.reporting import iter_months
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,98 @@ def update_project_assignment(
         )
     logger.info(f"Project assignment with ID {assignment_id} was updated.")
     return updated_assignment
+
+
+@router.post(
+    "/assignments/{assignment_id}/distribute",
+    response_model=List[schemas.AllocationResponse],
+    summary="Distribute allocation hours across a range of months",
+)
+def distribute_assignment_hours(
+    assignment_id: int,
+    distribution: schemas.AllocationDistributionRequest,
+    db: Session = Depends(get_db),
+):
+    """Automatically distribute hours evenly across the selected month range."""
+
+    assignment = crud.get_project_assignment(db, assignment_id)
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project assignment not found"
+        )
+
+    if distribution.strategy and distribution.strategy.lower() != "even":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only the 'even' distribution strategy is currently supported.",
+        )
+
+    try:
+        months = iter_months(
+            dt_date(distribution.start_year, distribution.start_month, 1),
+            dt_date(distribution.end_year, distribution.end_month, 1),
+        )
+    except Exception as exc:  # pragma: no cover - defensive conversion errors
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid month range supplied: {exc}",
+        ) from exc
+
+    if not months:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The month range must include at least one month.",
+        )
+
+    total_hours = distribution.total_hours
+    if total_hours is None:
+        current_allocated = sum(
+            allocation.allocated_hours for allocation in assignment.allocations or []
+        )
+        total_hours = max(assignment.funded_hours - current_allocated, 0)
+
+    if total_hours < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Total hours must be greater than or equal to zero.",
+        )
+
+    month_count = len(months)
+    if month_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to determine distribution months.",
+        )
+
+    base_hours = total_hours // month_count
+    remainder = total_hours % month_count
+
+    existing_allocations = {
+        (allocation.year, allocation.month): allocation
+        for allocation in assignment.allocations or []
+    }
+
+    updated_allocations = []
+    for index, (year, month) in enumerate(months):
+        hours = base_hours + (1 if index < remainder else 0)
+        allocation = existing_allocations.get((year, month))
+        if allocation:
+            allocation.allocated_hours = hours
+        else:
+            allocation = models.Allocation(
+                project_assignment_id=assignment_id,
+                year=year,
+                month=month,
+                allocated_hours=hours,
+            )
+            db.add(allocation)
+        updated_allocations.append(allocation)
+
+    db.commit()
+    for allocation in updated_allocations:
+        db.refresh(allocation)
+
+    return [schemas.AllocationResponse.model_validate(a) for a in updated_allocations]
 
 
 @router.delete(

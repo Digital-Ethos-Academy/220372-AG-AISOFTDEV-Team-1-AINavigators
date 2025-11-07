@@ -369,7 +369,7 @@ All 10 entities perfectly aligned (no changes needed):
 1. **Install Dependencies:**
    ```bash
    cd Artifacts/backend
-   pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose passlib bcrypt structlog httpx ujson
+   pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose passlib bcrypt structlog httpx ujson openpyxl
    ```
 
 2. **Create Data Directory:**

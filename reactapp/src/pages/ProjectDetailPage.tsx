@@ -1,17 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowDownToLine, CalendarDays, LayoutGrid, Loader2, UsersRound } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, CalendarDays, LayoutGrid, Loader2, PencilLine, UsersRound } from 'lucide-react';
 
-import { createAllocation, createAssignment, updateAllocation } from '../api/assignments';
+import { createAllocation, createAssignment, deleteAssignment, distributeAssignmentAllocations, updateAllocation, updateAssignment } from '../api/assignments';
 import { fetchLCATs, fetchRoles } from '../api/admin';
 import { exportProjectToExcel } from '../api/reports';
+import { updateProject } from '../api/projects';
 import { useMonthlyOverrideMutations, useProjectDetail } from '../hooks/useProjectDetail';
 import AllocationGrid from '../components/projects/AllocationGrid';
 import AddAssignmentModal from '../components/projects/AddAssignmentModal';
+import EditAssignmentModal from '../components/projects/EditAssignmentModal';
+import DistributeAssignmentModal from '../components/projects/DistributeAssignmentModal';
+import EditProjectModal from '../components/projects/EditProjectModal';
 import MonthlyHoursOverrideModal from '../components/projects/MonthlyHoursOverrideModal';
 import { fetchEmployees, fetchUserAllocationSummary } from '../api/users';
-import type { MonthlyHourOverride, ProjectAssignmentCreateInput } from '../types/api';
+import type {
+  AssignmentDistributionInput,
+  MonthlyHourOverride,
+  ProjectAssignment,
+  ProjectAssignmentCreateInput,
+  ProjectUpdateInput
+} from '../types/api';
 import ProjectHealthPanel from '../components/projects/ProjectHealthPanel';
 import ProjectAIInsights from '../components/projects/ProjectAIInsights';
 import { SectionHeader } from '../components/common';
@@ -41,18 +51,39 @@ export default function ProjectDetailPage() {
 
   const queryClient = useQueryClient();
   const { data: project, isLoading, isError, error } = useProjectDetail(projectId);
-  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: fetchRoles });
-  const lcatsQuery = useQuery({ queryKey: ['lcats'], queryFn: fetchLCATs });
-  const employeesQuery = useQuery({ queryKey: ['employees'], queryFn: fetchEmployees });
+  const rolesQuery = useQuery({
+    queryKey: ['roles', user?.id ?? 'all'],
+    queryFn: () =>
+      fetchRoles({ ownerId: user?.system_role === 'PM' ? user.id : undefined, includeGlobal: true })
+  });
+  const lcatsQuery = useQuery({
+    queryKey: ['lcats', user?.id ?? 'all'],
+    queryFn: () =>
+      fetchLCATs({ ownerId: user?.system_role === 'PM' ? user.id : undefined, includeGlobal: true })
+  });
+  const employeesQuery = useQuery({
+    queryKey: ['employees', user?.id ?? 'all'],
+    queryFn: () =>
+      fetchEmployees({
+        managerId: user?.system_role === 'PM' ? user.id : undefined,
+        includeGlobal: true
+      })
+  });
 
   const { create: createOverrideMutation, update: updateOverrideMutation, remove: deleteOverrideMutation } =
     useMonthlyOverrideMutations(projectId);
 
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [isAddAssignmentOpen, setAddAssignmentOpen] = useState(false);
+  const [isEditProjectOpen, setEditProjectOpen] = useState(false);
   const [overrideModal, setOverrideModal] = useState<OverrideModalState | null>(null);
+  const [editingAssignment, setEditingAssignment] = useState<ProjectAssignment | null>(null);
+  const [distributingAssignment, setDistributingAssignment] = useState<ProjectAssignment | null>(null);
   const [userTotals, setUserTotals] = useState<Record<string, number>>({});
   const [loadingSummaries, setLoadingSummaries] = useState(false);
+  const [projectModalError, setProjectModalError] = useState<string | null>(null);
+  const [assignmentModalError, setAssignmentModalError] = useState<string | null>(null);
+  const [distributionModalError, setDistributionModalError] = useState<string | null>(null);
 
   const addAssignmentMutation = useMutation({
     mutationFn: (payload: ProjectAssignmentCreateInput) => createAssignment(payload),
@@ -78,6 +109,56 @@ export default function ProjectDetailPage() {
       const label = project?.code ?? `project-${projectId}`;
       const timestamp = new Date().toISOString().slice(0, 10);
       saveBlobAsFile(blob, `staffalloc-${label}-${timestamp}.xlsx`);
+    }
+  });
+
+  const updateProjectMutation = useMutation({
+    mutationFn: (payload: ProjectUpdateInput) => updateProject(projectId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setEditProjectOpen(false);
+      setProjectModalError(null);
+    },
+    onError: (mutationError: unknown) => {
+      setProjectModalError(mutationError instanceof Error ? mutationError.message : 'Unable to update project.');
+    }
+  });
+
+  const updateAssignmentMutation = useMutation({
+    mutationFn: ({ assignmentId, payload }: { assignmentId: number; payload: ProjectAssignmentUpdateInput }) =>
+      updateAssignment(assignmentId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setEditingAssignment(null);
+      setAssignmentModalError(null);
+    },
+    onError: (mutationError: unknown) => {
+      setAssignmentModalError(mutationError instanceof Error ? mutationError.message : 'Unable to update assignment.');
+    }
+  });
+
+  const distributeMutation = useMutation({
+    mutationFn: ({ assignmentId, payload }: { assignmentId: number; payload: AssignmentDistributionInput }) =>
+      distributeAssignmentAllocations(assignmentId, payload),
+    onSuccess: (_allocations, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setDistributionModalError(null);
+      if (variables && distributingAssignment) {
+        refreshUserTotals(distributingAssignment.user_id);
+      }
+      setDistributingAssignment(null);
+    },
+    onError: (mutationError: unknown) => {
+      setDistributionModalError(
+        mutationError instanceof Error ? mutationError.message : 'Unable to distribute hours. Try again.'
+      );
+    }
+  });
+
+  const removeAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: number) => deleteAssignment(assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     }
   });
 
@@ -120,6 +201,26 @@ export default function ProjectDetailPage() {
       cancelled = true;
     };
   }, [project]);
+
+  const refreshUserTotals = async (userId: number) => {
+    try {
+      const summary = await fetchUserAllocationSummary(userId);
+      setUserTotals((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((key) => {
+          if (key.startsWith(`${userId}-`)) {
+            delete next[key];
+          }
+        });
+        summary.forEach((item) => {
+          next[`${userId}-${item.year}-${item.month}`] = item.total_hours;
+        });
+        return next;
+      });
+    } catch (summaryError) {
+      console.error('Failed to refresh allocation summary', summaryError);
+    }
+  };
 
   const handleAssignmentSubmit = async (payload: ProjectAssignmentCreateInput) => {
     await addAssignmentMutation.mutateAsync(payload);
@@ -170,19 +271,7 @@ export default function ProjectDetailPage() {
     }
 
     try {
-      const summary = await fetchUserAllocationSummary(userId);
-      setUserTotals((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((key) => {
-          if (key.startsWith(`${userId}-`)) {
-            delete next[key];
-          }
-        });
-        summary.forEach((item) => {
-          next[`${userId}-${item.year}-${item.month}`] = item.total_hours;
-        });
-        return next;
-      });
+      await refreshUserTotals(userId);
     } catch (summaryError) {
       console.error('Failed to refresh allocation summary', summaryError);
     }
@@ -227,6 +316,63 @@ export default function ProjectDetailPage() {
       override
     });
   };
+
+  const handleProjectUpdate = async (values: ProjectUpdateInput) => {
+    setProjectModalError(null);
+    await updateProjectMutation.mutateAsync(values);
+  };
+
+  const handleAssignmentUpdate = async (values: ProjectAssignmentUpdateInput) => {
+    if (!editingAssignment) return;
+    setAssignmentModalError(null);
+    await updateAssignmentMutation.mutateAsync({ assignmentId: editingAssignment.id, payload: values });
+    await refreshUserTotals(editingAssignment.user_id);
+  };
+
+  const handleDistributeSubmit = async (values: AssignmentDistributionInput) => {
+    if (!distributingAssignment) return;
+    setDistributionModalError(null);
+    await distributeMutation.mutateAsync({ assignmentId: distributingAssignment.id, payload: values });
+  };
+
+  const handleRemoveAssignment = async (assignment: ProjectAssignment) => {
+    if (!window.confirm(`Remove ${assignment.user.full_name} from this project? This will delete all their allocations.`)) {
+      return;
+    }
+    await removeAssignmentMutation.mutateAsync(assignment.id);
+  };
+
+  const timelineDefaults = useMemo(() => {
+    if (!project) {
+      const today = new Date();
+      return {
+        start: { year: today.getFullYear(), month: today.getMonth() + 1 },
+        end: { year: today.getFullYear(), month: today.getMonth() + 1 }
+      };
+    }
+
+    let earliest = new Date(project.start_date);
+    let latest = new Date(project.start_date);
+
+    project.assignments.forEach((assignment) => {
+      assignment.allocations?.forEach((allocation) => {
+        const current = new Date(allocation.year, allocation.month - 1, 1);
+        if (current < earliest) earliest = current;
+        if (current > latest) latest = current;
+      });
+    });
+
+    const estimatedEnd = new Date(project.start_date);
+    estimatedEnd.setDate(estimatedEnd.getDate() + project.sprints * 14);
+    if (latest < estimatedEnd) {
+      latest = estimatedEnd;
+    }
+
+    return {
+      start: { year: earliest.getFullYear(), month: earliest.getMonth() + 1 },
+      end: { year: latest.getFullYear(), month: latest.getMonth() + 1 }
+    };
+  }, [project]);
 
   const fundedVsAllocated = useMemo(() => {
     if (!project) return { funded: 0, allocated: 0 };
@@ -307,28 +453,14 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm">
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1.5 font-semibold transition ${
-                viewMode === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'
-              }`}
-              onClick={() => setViewMode('month')}
-            >
-              Monthly View
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1.5 font-semibold transition ${
-                viewMode === 'sprint' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'
-              }`}
-              onClick={() => setViewMode('sprint')}
-            >
-              Sprint View
-            </button>
-          </div>
-
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setEditProjectOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+            >
+              <PencilLine className="h-4 w-4" /> Edit Project
+            </button>
             <button
               type="button"
               onClick={() => exportMutation.mutate()}
@@ -372,17 +504,43 @@ export default function ProjectDetailPage() {
           title="AI Assist"
           description="Use AI to recommend staffing, detect conflicts, and balance workloads for this project."
         />
-        <ProjectAIInsights projectId={project.id} />
+        <ProjectAIInsights
+          projectId={project.id}
+          roles={rolesQuery.data ?? []}
+          lcats={lcatsQuery.data ?? []}
+        />
       </section>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-800">Allocation Grid</h2>
-          {loadingSummaries && (
-            <span className="inline-flex items-center gap-2 text-xs text-slate-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking cross-project allocations...
-            </span>
-          )}
+          <div className="flex items-center gap-4">
+            {loadingSummaries && (
+              <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking cross-project allocations...
+              </span>
+            )}
+            <div className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 font-semibold transition ${
+                  viewMode === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'
+                }`}
+                onClick={() => setViewMode('month')}
+              >
+                Monthly View
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 font-semibold transition ${
+                  viewMode === 'sprint' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'
+                }`}
+                onClick={() => setViewMode('sprint')}
+              >
+                Sprint View
+              </button>
+            </div>
+          </div>
         </div>
         <AllocationGrid
           project={project}
@@ -390,6 +548,15 @@ export default function ProjectDetailPage() {
           onChangeHours={handleChangeHours}
           onRequestOverride={handleRequestOverride}
           userTotals={userTotals}
+          onEditAssignment={(assignment) => {
+            setAssignmentModalError(null);
+            setEditingAssignment(assignment);
+          }}
+          onDistributeHours={(assignment) => {
+            setDistributionModalError(null);
+            setDistributingAssignment(assignment);
+          }}
+          onRemoveAssignment={handleRemoveAssignment}
         />
       </section>
 
@@ -403,6 +570,46 @@ export default function ProjectDetailPage() {
         onClose={() => setAddAssignmentOpen(false)}
         onSubmit={handleAssignmentSubmit}
         error={addAssignmentMutation.error instanceof Error ? addAssignmentMutation.error.message : null}
+      />
+
+      <EditProjectModal
+        open={isEditProjectOpen}
+        submitting={updateProjectMutation.isPending}
+        project={project}
+        error={projectModalError}
+        onSubmit={handleProjectUpdate}
+        onClose={() => {
+          setEditProjectOpen(false);
+          setProjectModalError(null);
+        }}
+      />
+
+      <EditAssignmentModal
+        open={editingAssignment !== null}
+        submitting={updateAssignmentMutation.isPending}
+        assignment={editingAssignment}
+        roles={rolesQuery.data ?? []}
+        lcats={lcatsQuery.data ?? []}
+        error={assignmentModalError}
+        onSubmit={handleAssignmentUpdate}
+        onClose={() => {
+          setEditingAssignment(null);
+          setAssignmentModalError(null);
+        }}
+      />
+
+      <DistributeAssignmentModal
+        open={distributingAssignment !== null}
+        submitting={distributeMutation.isPending}
+        assignment={distributingAssignment}
+        defaultStart={timelineDefaults.start}
+        defaultEnd={timelineDefaults.end}
+        error={distributionModalError}
+        onSubmit={handleDistributeSubmit}
+        onClose={() => {
+          setDistributingAssignment(null);
+          setDistributionModalError(null);
+        }}
       />
 
       {overrideModal && (

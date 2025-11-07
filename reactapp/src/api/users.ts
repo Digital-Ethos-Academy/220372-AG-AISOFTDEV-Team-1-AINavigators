@@ -1,14 +1,28 @@
 import api from './client';
 import type {
   EmployeeListItem,
+  SystemRole,
   User,
   UserAllocationSummaryItem,
   UserCreateInput,
   UserWithAssignments
 } from '../types/api';
 
-export async function fetchEmployees(): Promise<EmployeeListItem[]> {
-  const { data } = await api.get<EmployeeListItem[]>('/employees');
+export interface EmployeeQueryParams {
+  managerId?: number;
+  systemRole?: SystemRole;
+  includeGlobal?: boolean;
+}
+
+export async function fetchEmployees(params: EmployeeQueryParams = {}): Promise<EmployeeListItem[]> {
+  const { managerId, systemRole, includeGlobal } = params;
+  const { data } = await api.get<EmployeeListItem[]>('/employees', {
+    params: {
+      ...(managerId ? { manager_id: managerId } : {}),
+      ...(systemRole ? { system_role: systemRole } : {}),
+      ...(includeGlobal ? { include_global: includeGlobal } : {})
+    }
+  });
   return data;
 }
 

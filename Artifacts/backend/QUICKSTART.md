@@ -23,7 +23,7 @@ cd Artifacts/backend
 ### 2. Install Python Dependencies
 
 ```bash
-pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson
+pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson openpyxl
 ```
 
 Or if you prefer using a virtual environment (recommended):
@@ -39,7 +39,7 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # Install dependencies
-pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson
+pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson openpyxl
 ```
 
 ### 3. Create Data Directory
