@@ -6,7 +6,7 @@ import logging
 import math
 import re
 from collections import Counter, defaultdict
-from typing import Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -99,7 +99,7 @@ def _employee_summary(
     return "\n".join(lines)
 
 
-def reindex_rag_cache(db: Session, *, manager_id: int | None = None) -> int:
+def reindex_rag_cache(db: Session, *, manager_id: Optional[int] = None) -> int:
     """Populate the AI RAG cache with project and employee summaries."""
 
     created = 0
@@ -128,7 +128,6 @@ def reindex_rag_cache(db: Session, *, manager_id: int | None = None) -> int:
         limit=2000,
         manager_id=manager_id,
         system_role=models.SystemRole.EMPLOYEE,
-        include_global=False,
     )
     for employee in employees:
         document_text = _truncate(
@@ -147,15 +146,31 @@ def reindex_rag_cache(db: Session, *, manager_id: int | None = None) -> int:
 
 
 def retrieve_rag_context(
-    db: Session, query: str, limit: int = 5
+    db: Session, query: str, limit: int = 5, manager_id: Optional[int] = None
 ) -> List[Tuple[str, str]]:
     """Return the most relevant cached documents for the supplied query."""
 
     documents = crud.get_all_rag_cache_documents(db)
     if not documents:
         logger.info("AI RAG cache empty; rebuilding before retrieval")
-        reindex_rag_cache(db)
+        reindex_rag_cache(db, manager_id=manager_id)
         documents = crud.get_all_rag_cache_documents(db)
+    
+    # Filter documents by manager if specified
+    if manager_id is not None:
+        # Get manager's employees and projects to filter context
+        manager_employees = crud.get_users(db, limit=2000, manager_id=manager_id, system_role=models.SystemRole.EMPLOYEE)
+        manager_projects = crud.get_projects(db, limit=500, manager_id=manager_id)
+        
+        employee_ids = {emp.id for emp in manager_employees}
+        project_ids = {proj.id for proj in manager_projects}
+        
+        # Filter to only documents related to this manager's data
+        documents = [
+            doc for doc in documents
+            if (doc.source_entity == "employee" and doc.source_id in employee_ids) or
+               (doc.source_entity == "project" and doc.source_id in project_ids)
+        ]
 
     if not documents:
         return []

@@ -120,11 +120,14 @@ class EmployeeTimelineResponse(BaseModel):
 @router.get(
     "/portfolio-dashboard",
     response_model=PortfolioDashboardResponse,
-    summary="Get organization-wide portfolio dashboard",
+    summary="Get manager-specific portfolio dashboard",
 )
-def get_portfolio_dashboard(db: Session = Depends(get_db)):
+def get_portfolio_dashboard(
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation (optional)"),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve an organization-wide dashboard with key metrics.
+    Retrieve a manager-specific dashboard with key metrics.
     
     Provides:
     - Total FTE by role
@@ -132,26 +135,32 @@ def get_portfolio_dashboard(db: Session = Depends(get_db)):
     - List of employees on the bench (<25% FTE)
     - Overall utilization rates
     
-    Supports US011: Portfolio-level roll-up dashboard for Directors.
+    Manager-specific isolation enforced: only shows data for this manager's projects and employees.
+    
+    Supports US011: Portfolio-level roll-up dashboard for PMs.
     
     NOTE: This is a basic implementation. Enhanced analytics can be added.
     """
-    logger.info("Generating portfolio dashboard")
+    logger.info(f"Generating portfolio dashboard for manager {manager_id}")
 
     today = date.today()
     standard_hours_this_month = max(standard_month_hours(today.year, today.month), 1)
 
+    # Filter by manager_id for data isolation
     total_projects = (
-        db.query(func.count(models.Project.id)).scalar() or 0
+        db.query(func.count(models.Project.id))
+        .filter(models.Project.manager_id == manager_id)
+        .scalar() or 0
     )
     total_employees = (
         db.query(func.count(models.User.id))
         .filter(models.User.system_role == models.SystemRole.EMPLOYEE)
+        .filter(models.User.manager_id == manager_id)
         .scalar()
         or 0
     )
 
-    role_capacity = crud.get_role_capacity_summary(db)
+    role_capacity = crud.get_role_capacity_summary(db, manager_id=manager_id)
     total_funded_hours = sum(int(entry.get("funded_hours") or 0) for entry in role_capacity)
     total_allocated_hours = sum(int(entry.get("allocated_hours") or 0) for entry in role_capacity)
 
@@ -171,14 +180,14 @@ def get_portfolio_dashboard(db: Session = Depends(get_db)):
         else:
             fte_by_role[role_name] = 0.0
 
-    monthly_user_totals = crud.get_monthly_user_allocation_totals(db)
+    monthly_user_totals = crud.get_monthly_user_allocation_totals(db, manager_id=manager_id)
     current_hours_by_user = {
         row["user_id"]: int(row.get("total_hours") or 0)
         for row in monthly_user_totals
         if row["year"] == today.year and row["month"] == today.month
     }
 
-    project_allocations = crud.get_monthly_user_project_allocations(db)
+    project_allocations = crud.get_monthly_user_project_allocations(db, manager_id=manager_id)
     current_project_breakdown: Dict[int, List[ProjectAllocationBreakdown]] = defaultdict(list)
     for row in project_allocations:
         if row["year"] == today.year and row["month"] == today.month:
@@ -193,7 +202,7 @@ def get_portfolio_dashboard(db: Session = Depends(get_db)):
     for breakdown in current_project_breakdown.values():
         breakdown.sort(key=lambda item: item.allocated_hours, reverse=True)
 
-    primary_role_entries = crud.get_user_role_funding_totals(db)
+    primary_role_entries = crud.get_user_role_funding_totals(db, manager_id=manager_id)
     primary_role_lookup: Dict[int, str] = {}
     role_hours_tracker: Dict[int, float] = {}
     for entry in primary_role_entries:
@@ -211,8 +220,8 @@ def get_portfolio_dashboard(db: Session = Depends(get_db)):
         db,
         skip=0,
         limit=2000,
+        manager_id=manager_id,
         system_role=models.SystemRole.EMPLOYEE,
-        include_global=False,
     )
 
     over_allocated: List[EmployeeCapacitySummary] = []
@@ -248,6 +257,132 @@ def get_portfolio_dashboard(db: Session = Depends(get_db)):
         fte_by_role={role: round(value, 2) for role, value in fte_by_role.items()},
         over_allocated_employees=over_allocated,
         bench_employees=bench,
+    )
+
+
+# ======================================================================================
+# Manager Allocations Rollup - Dashboard Grid
+# ======================================================================================
+
+class EmployeeMonthlyTotal(BaseModel):
+    """Monthly allocation total for an employee."""
+    year: int
+    month: int
+    total_hours: int
+    fte_percentage: float
+
+class EmployeeAllocationRollup(BaseModel):
+    """Rollup of all allocations for a single employee."""
+    employee_id: int
+    employee_name: str
+    total_funded_hours: int
+    monthly_totals: List[EmployeeMonthlyTotal] = Field(default_factory=list)
+
+class ManagerAllocationsResponse(BaseModel):
+    """Response for manager allocations rollup grid."""
+    employees: List[EmployeeAllocationRollup] = Field(default_factory=list)
+    date_range: Dict[str, int] = Field(default_factory=dict)
+
+@router.get(
+    "/manager-allocations",
+    response_model=ManagerAllocationsResponse,
+    summary="Get manager allocation rollup for dashboard grid",
+)
+def get_manager_allocations(
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation (optional)"),
+    start_year: int = Query(..., ge=2020, le=2050, description="Start year for date range"),
+    start_month: int = Query(..., ge=1, le=12, description="Start month for date range"),
+    end_year: int = Query(..., ge=2020, le=2050, description="End year for date range"),
+    end_month: int = Query(..., ge=1, le=12, description="End month for date range"),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve allocation rollup for all employees managed by a specific manager.
+    
+    Returns:
+    - List of employees with their total funded hours
+    - Monthly allocation totals for each employee across all projects
+    - Date range info
+    
+    This endpoint powers the dashboard allocation rollup grid.
+    """
+    logger.info(f"Generating manager allocations rollup for manager {manager_id}")
+    
+    # Get all employees for this manager
+    employees = crud.get_users(
+        db,
+        skip=0,
+        limit=2000,
+        manager_id=manager_id,
+        system_role=models.SystemRole.EMPLOYEE,
+    )
+    
+    # Get monthly totals for this manager's projects
+    monthly_totals = crud.get_monthly_user_allocation_totals(db, manager_id=manager_id)
+    
+    # Get funded hours per employee across all projects
+    funded_hours_query = (
+        db.query(
+            models.ProjectAssignment.user_id.label("user_id"),
+            func.sum(models.ProjectAssignment.funded_hours).label("total_funded"),
+        )
+        .join(models.Project, models.Project.id == models.ProjectAssignment.project_id)
+        .filter(models.Project.manager_id == manager_id)
+        .group_by(models.ProjectAssignment.user_id)
+        .all()
+    )
+    
+    funded_lookup = {row.user_id: int(row.total_funded or 0) for row in funded_hours_query}
+    
+    # Build response
+    employee_rollups = []
+    for employee in employees:
+        # Get monthly totals for this employee within date range
+        employee_monthlies = []
+        for month_data in monthly_totals:
+            if month_data["user_id"] != employee.id:
+                continue
+            year = month_data["year"]
+            month = month_data["month"]
+            
+            # Check if within date range
+            if (year < start_year or (year == start_year and month < start_month)):
+                continue
+            if (year > end_year or (year == end_year and month > end_month)):
+                continue
+            
+            total_hours = int(month_data.get("total_hours") or 0)
+            standard_hours = max(standard_month_hours(year, month), 1)
+            fte_pct = (total_hours / standard_hours) * 100
+            
+            employee_monthlies.append(EmployeeMonthlyTotal(
+                year=year,
+                month=month,
+                total_hours=total_hours,
+                fte_percentage=round(fte_pct, 2)
+            ))
+        
+        # Sort by year/month
+        employee_monthlies.sort(key=lambda x: (x.year, x.month))
+        
+        employee_rollups.append(EmployeeAllocationRollup(
+            employee_id=employee.id,
+            employee_name=employee.full_name,
+            total_funded_hours=funded_lookup.get(employee.id, 0),
+            monthly_totals=employee_monthlies
+        ))
+    
+    # Sort by employee name
+    employee_rollups.sort(key=lambda x: x.employee_name)
+    
+    return ManagerAllocationsResponse(
+        employees=employee_rollups,
+        date_range={
+            "start_year": start_year,
+            "start_month": start_month,
+            "end_year": end_year,
+            "end_month": end_month
+        }
     )
 
 

@@ -16,7 +16,6 @@ class APIBaseModel(BaseModel):
 
 class SystemRole(str, enum.Enum):
     ADMIN = "Admin"
-    DIRECTOR = "Director"
     PM = "PM"
     EMPLOYEE = "Employee"
 
@@ -183,30 +182,6 @@ class ProjectInDB(ProjectBase):
 class ProjectResponse(ProjectInDB):
     """Standard project response with the manager's summary info."""
     manager: Optional[UserSummaryResponse] = None
-
-
-# -------------------------------------------------------------------------------------
-# Project Viewer Schemas
-# -------------------------------------------------------------------------------------
-
-
-class ProjectViewerBase(APIBaseModel):
-    project_id: int
-    user_id: int
-    granted_by_id: Optional[int] = None
-
-
-class ProjectViewerCreate(ProjectViewerBase):
-    pass
-
-
-class ProjectViewerInDB(ProjectViewerBase):
-    id: int
-    created_at: datetime.datetime
-
-
-class ProjectViewerResponse(ProjectViewerInDB):
-    user: UserSummaryResponse
 
 
 # ======================================================================================

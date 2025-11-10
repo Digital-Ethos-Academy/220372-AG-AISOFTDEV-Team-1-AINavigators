@@ -13,8 +13,6 @@ function roleLabel(role: SystemRole) {
   switch (role) {
     case 'Admin':
       return 'Administrator';
-    case 'Director':
-      return 'Director';
     case 'PM':
       return 'Project Manager';
     case 'Employee':
@@ -44,7 +42,6 @@ function StatusPill({ active }: { active: boolean }) {
 function RoleBadge({ role }: { role: SystemRole }) {
   const colors: Record<SystemRole, string> = {
     Admin: 'bg-purple-100 text-purple-700',
-    Director: 'bg-blue-100 text-blue-700',
     PM: 'bg-amber-100 text-amber-700',
     Employee: 'bg-slate-100 text-slate-600'
   };
@@ -96,12 +93,14 @@ export default function TeamsPage() {
   const queryClient = useQueryClient();
 
   const { data: employees = [], isLoading, isError, error } = useQuery({
-    queryKey: ['employees', user?.id ?? 'all'],
-    queryFn: () =>
-      fetchEmployees({
-        managerId: user?.system_role === 'PM' ? user.id : undefined,
-        includeGlobal: true
-      }),
+    queryKey: ['employees', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.resolve([]);
+      return fetchEmployees({
+        managerId: user.id
+      });
+    },
+    enabled: !!user?.id,
     staleTime: 60_000
   });
 

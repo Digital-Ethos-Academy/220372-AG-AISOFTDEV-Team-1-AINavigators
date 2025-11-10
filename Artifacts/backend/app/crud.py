@@ -59,24 +59,17 @@ def get_users(
     *,
     manager_id: Optional[int] = None,
     system_role: Optional[models.SystemRole] = None,
-    include_global: bool = False,
 ) -> List[models.User]:
-    """Retrieves a list of users with optional manager and role filtering."""
+    """Retrieves a list of users filtered by manager (for employees) or all PM/Admin users."""
     query = db.query(models.User)
 
     if system_role:
         query = query.filter(models.User.system_role == system_role)
 
+    # For manager-specific isolation: only show employees owned by this manager
+    # PM and Admin users are returned only when explicitly queried
     if manager_id is not None:
-        if include_global:
-            query = query.filter(
-                or_(
-                    models.User.manager_id == manager_id,
-                    models.User.system_role != models.SystemRole.EMPLOYEE,
-                )
-            )
-        else:
-            query = query.filter(models.User.manager_id == manager_id)
+        query = query.filter(models.User.manager_id == manager_id)
 
     return (
         query.order_by(models.User.full_name)
@@ -135,12 +128,10 @@ def get_role(db: Session, role_id: int) -> Optional[models.Role]:
 
 
 def get_role_by_name(db: Session, name: str, owner_id: Optional[int]) -> Optional[models.Role]:
-    """Retrieve a role by name scoped to an owner (or shared role)."""
+    """Retrieve a role by name scoped to an owner for manager isolation."""
     query = db.query(models.Role).filter(models.Role.name == name)
     if owner_id is not None:
-        query = query.filter(
-            (models.Role.owner_id == owner_id) | (models.Role.owner_id.is_(None))
-        )
+        query = query.filter(models.Role.owner_id == owner_id)
     return query.first()
 
 
@@ -150,20 +141,13 @@ def get_roles(
     limit: int = 100,
     *,
     owner_id: Optional[int] = None,
-    include_global: bool = True,
 ) -> List[models.Role]:
-    """Retrieves a list of roles with optional owner filtering."""
+    """Retrieves a list of roles filtered by owner for manager isolation."""
     query = db.query(models.Role)
+    
+    # Enforce manager-specific isolation: only return roles owned by this manager
     if owner_id is not None:
-        if include_global:
-            query = query.filter(
-                or_(
-                    models.Role.owner_id == owner_id,
-                    models.Role.owner_id.is_(None),
-                )
-            )
-        else:
-            query = query.filter(models.Role.owner_id == owner_id)
+        query = query.filter(models.Role.owner_id == owner_id)
 
     return query.order_by(models.Role.name).offset(skip).limit(limit).all()
 
@@ -217,12 +201,10 @@ def get_lcat(db: Session, lcat_id: int) -> Optional[models.LCAT]:
 
 
 def get_lcat_by_name(db: Session, name: str, owner_id: Optional[int]) -> Optional[models.LCAT]:
-    """Retrieve an LCAT by name scoped to an owner (or shared)."""
+    """Retrieve an LCAT by name scoped to an owner for manager isolation."""
     query = db.query(models.LCAT).filter(models.LCAT.name == name)
     if owner_id is not None:
-        query = query.filter(
-            (models.LCAT.owner_id == owner_id) | (models.LCAT.owner_id.is_(None))
-        )
+        query = query.filter(models.LCAT.owner_id == owner_id)
     return query.first()
 
 
@@ -232,20 +214,13 @@ def get_lcats(
     limit: int = 100,
     *,
     owner_id: Optional[int] = None,
-    include_global: bool = True,
 ) -> List[models.LCAT]:
-    """Retrieves a list of LCATs with optional owner filtering."""
+    """Retrieves a list of LCATs filtered by owner for manager isolation."""
     query = db.query(models.LCAT)
+    
+    # Enforce manager-specific isolation: only return LCATs owned by this manager
     if owner_id is not None:
-        if include_global:
-            query = query.filter(
-                or_(
-                    models.LCAT.owner_id == owner_id,
-                    models.LCAT.owner_id.is_(None),
-                )
-            )
-        else:
-            query = query.filter(models.LCAT.owner_id == owner_id)
+        query = query.filter(models.LCAT.owner_id == owner_id)
 
     return query.order_by(models.LCAT.name).offset(skip).limit(limit).all()
 
@@ -293,7 +268,6 @@ def get_project(db: Session, project_id: int) -> Optional[models.Project]:
     return (
         db.query(models.Project)
         .options(
-            joinedload(models.Project.viewer_links).joinedload(models.ProjectViewer.user),
             joinedload(models.Project.manager),
         )
         .filter(models.Project.id == project_id)
@@ -317,20 +291,12 @@ def get_projects(
     limit: int = 100,
     *,
     manager_id: Optional[int] = None,
-    viewer_user_id: Optional[int] = None,
 ) -> List[models.Project]:
-    """Retrieves a list of projects with optional manager/viewer filtering."""
+    """Retrieves a list of projects filtered by manager."""
     query = db.query(models.Project)
 
     if manager_id is not None:
         query = query.filter(models.Project.manager_id == manager_id)
-
-    if viewer_user_id is not None:
-        query = (
-            query.join(models.ProjectViewer)
-            .filter(models.ProjectViewer.user_id == viewer_user_id)
-            .distinct()
-        )
 
     return query.order_by(models.Project.name).offset(skip).limit(limit).all()
 
@@ -376,64 +342,6 @@ def get_projects_for_user(db: Session, user_id: int) -> List[models.Project]:
 def get_projects_managed_by_user(db: Session, manager_id: int) -> List[models.Project]:
     """Retrieves all projects managed by a specific user."""
     return db.query(models.Project).filter(models.Project.manager_id == manager_id).all()
-
-
-def add_project_viewer(
-    db: Session,
-    *,
-    project_id: int,
-    user_id: int,
-    granted_by_id: Optional[int] = None,
-) -> models.ProjectViewer:
-    """Adds a viewer to a project."""
-    db_viewer = models.ProjectViewer(
-        project_id=project_id,
-        user_id=user_id,
-        granted_by_id=granted_by_id,
-    )
-    db.add(db_viewer)
-    db.commit()
-    db.refresh(db_viewer)
-    return db_viewer
-
-
-def get_project_viewer(
-    db: Session, *, project_id: int, user_id: int
-) -> Optional[models.ProjectViewer]:
-    """Fetches a specific project viewer link."""
-    return (
-        db.query(models.ProjectViewer)
-        .filter(
-            models.ProjectViewer.project_id == project_id,
-            models.ProjectViewer.user_id == user_id,
-        )
-        .first()
-    )
-
-
-def get_project_viewers(
-    db: Session, project_id: int
-) -> List[models.ProjectViewer]:
-    """Retrieves all viewer links for a project."""
-    return (
-        db.query(models.ProjectViewer)
-        .filter(models.ProjectViewer.project_id == project_id)
-        .options(joinedload(models.ProjectViewer.user))
-        .order_by(models.ProjectViewer.created_at.desc())
-        .all()
-    )
-
-
-def remove_project_viewer(
-    db: Session, *, project_id: int, user_id: int
-) -> bool:
-    """Removes a viewer from a project."""
-    db_viewer = get_project_viewer(db, project_id=project_id, user_id=user_id)
-    if not db_viewer:
-        return False
-    db.delete(db_viewer)
-    db.commit()
-    return True
 
 
 # --------------------------------------------------------------------------------
@@ -637,16 +545,23 @@ def get_user_allocation_summary(db: Session, user_id: int) -> List[Dict[str, Any
 # --------------------------------------------------------------------------------
 
 
-def get_role_capacity_summary(db: Session) -> List[Dict[str, Any]]:
-    """Aggregate funded vs allocated hours per role across all assignments."""
+def get_role_capacity_summary(db: Session, *, manager_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Aggregate funded vs allocated hours per role across assignments for a specific manager."""
 
-    assignments_sq = (
-        db.query(
-            models.ProjectAssignment.id.label("assignment_id"),
-            models.ProjectAssignment.role_id.label("role_id"),
-            models.ProjectAssignment.funded_hours.label("funded_hours"),
-        ).subquery()
+    assignments_query = db.query(
+        models.ProjectAssignment.id.label("assignment_id"),
+        models.ProjectAssignment.role_id.label("role_id"),
+        models.ProjectAssignment.funded_hours.label("funded_hours"),
     )
+    
+    # Filter by manager_id for data isolation
+    if manager_id is not None:
+        assignments_query = assignments_query.join(
+            models.Project,
+            models.Project.id == models.ProjectAssignment.project_id
+        ).filter(models.Project.manager_id == manager_id)
+    
+    assignments_sq = assignments_query.subquery()
 
     allocations_sq = (
         db.query(
@@ -680,10 +595,10 @@ def get_role_capacity_summary(db: Session) -> List[Dict[str, Any]]:
     return [dict(row._mapping) for row in rows]
 
 
-def get_monthly_user_allocation_totals(db: Session) -> List[Dict[str, Any]]:
-    """Return total allocated hours per user/month across all assignments."""
+def get_monthly_user_allocation_totals(db: Session, *, manager_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Return total allocated hours per user/month for a specific manager's projects."""
 
-    rows = (
+    query = (
         db.query(
             models.ProjectAssignment.user_id.label("user_id"),
             models.Allocation.year.label("year"),
@@ -694,19 +609,26 @@ def get_monthly_user_allocation_totals(db: Session) -> List[Dict[str, Any]]:
             models.Allocation,
             models.Allocation.project_assignment_id == models.ProjectAssignment.id,
         )
-        .group_by(
-            models.ProjectAssignment.user_id, models.Allocation.year, models.Allocation.month
-        )
-        .all()
     )
+    
+    # Filter by manager_id for data isolation
+    if manager_id is not None:
+        query = query.join(
+            models.Project,
+            models.Project.id == models.ProjectAssignment.project_id
+        ).filter(models.Project.manager_id == manager_id)
+    
+    rows = query.group_by(
+        models.ProjectAssignment.user_id, models.Allocation.year, models.Allocation.month
+    ).all()
 
     return [dict(row._mapping) for row in rows]
 
 
 def get_monthly_user_project_allocations(
-    db: Session, *, user_id: Optional[int] = None
+    db: Session, *, user_id: Optional[int] = None, manager_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
-    """Return allocated hours per user/project/month for detailed breakdowns."""
+    """Return allocated hours per user/project/month for detailed breakdowns, filtered by manager."""
 
     query = (
         db.query(
@@ -726,6 +648,10 @@ def get_monthly_user_project_allocations(
 
     if user_id is not None:
         query = query.filter(models.ProjectAssignment.user_id == user_id)
+    
+    # Filter by manager_id for data isolation
+    if manager_id is not None:
+        query = query.filter(models.Project.manager_id == manager_id)
 
     rows = query.group_by(
         models.ProjectAssignment.user_id,
@@ -738,19 +664,26 @@ def get_monthly_user_project_allocations(
     return [dict(row._mapping) for row in rows]
 
 
-def get_user_role_funding_totals(db: Session) -> List[Dict[str, Any]]:
-    """Return funded hour totals per user/role pair to infer primary roles."""
+def get_user_role_funding_totals(db: Session, *, manager_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Return funded hour totals per user/role pair to infer primary roles, filtered by manager."""
 
-    rows = (
+    query = (
         db.query(
             models.ProjectAssignment.user_id.label("user_id"),
             models.Role.name.label("role_name"),
             func.sum(models.ProjectAssignment.funded_hours).label("funded_hours"),
         )
         .join(models.Role, models.Role.id == models.ProjectAssignment.role_id)
-        .group_by(models.ProjectAssignment.user_id, models.Role.name)
-        .all()
     )
+    
+    # Filter by manager_id for data isolation
+    if manager_id is not None:
+        query = query.join(
+            models.Project,
+            models.Project.id == models.ProjectAssignment.project_id
+        ).filter(models.Project.manager_id == manager_id)
+    
+    rows = query.group_by(models.ProjectAssignment.user_id, models.Role.name).all()
 
     return [dict(row._mapping) for row in rows]
 

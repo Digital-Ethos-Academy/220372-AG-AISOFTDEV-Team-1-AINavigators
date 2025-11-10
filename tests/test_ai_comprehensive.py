@@ -571,40 +571,6 @@ def test_utilization_by_role_with_data(client, api_prefix, ai_comprehensive_seed
     assert sw_util["total_hours"] > 0
 
 
-def test_recommend_staff_excludes_existing_assignments(client, api_prefix, ai_comprehensive_seed):
-    """Test that recommendations exclude employees already on the project."""
-    
-    today = date.today()
-    
-    # Request recommendations for Project Alpha
-    # Should NOT recommend John or Jane (already assigned)
-    # Should recommend Bob, Alice, or Mike
-    response = client.post(
-        f"{api_prefix}/ai/recommend-staff",
-        json={
-            "project_id": ai_comprehensive_seed["projects"]["alpha"],
-            "role_id": ai_comprehensive_seed["roles"]["sw_engineer"],
-            "year": today.year,
-            "month": today.month,
-            "required_hours": 80,
-        },
-    )
-    
-    assert response.status_code in [200, 503]
-    
-    if response.status_code == 200:
-        data = response.json()
-        candidates = data["candidates"]
-        
-        # John and Jane should NOT be in candidates (already on Alpha)
-        john_id = ai_comprehensive_seed["employees"]["john"]
-        jane_id = ai_comprehensive_seed["employees"]["jane"]
-        
-        candidate_ids = [c["user_id"] for c in candidates]
-        assert john_id not in candidate_ids
-        assert jane_id not in candidate_ids
-
-
 def test_auto_distribute_hours(client, api_prefix, ai_comprehensive_seed):
     """Test automatic hour distribution feature."""
     

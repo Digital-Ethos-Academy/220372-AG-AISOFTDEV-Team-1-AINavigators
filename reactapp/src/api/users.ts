@@ -9,18 +9,16 @@ import type {
 } from '../types/api';
 
 export interface EmployeeQueryParams {
-  managerId?: number;
+  managerId: number; // Required for data isolation
   systemRole?: SystemRole;
-  includeGlobal?: boolean;
 }
 
-export async function fetchEmployees(params: EmployeeQueryParams = {}): Promise<EmployeeListItem[]> {
-  const { managerId, systemRole, includeGlobal } = params;
+export async function fetchEmployees(params: EmployeeQueryParams): Promise<EmployeeListItem[]> {
+  const { managerId, systemRole } = params;
   const { data } = await api.get<EmployeeListItem[]>('/employees', {
     params: {
-      ...(managerId ? { manager_id: managerId } : {}),
-      ...(systemRole ? { system_role: systemRole } : {}),
-      ...(includeGlobal ? { include_global: includeGlobal } : {})
+      manager_id: managerId,
+      ...(systemRole ? { system_role: systemRole } : {})
     }
   });
   return data;

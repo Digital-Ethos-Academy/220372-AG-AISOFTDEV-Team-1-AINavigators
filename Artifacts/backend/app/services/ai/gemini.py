@@ -14,21 +14,18 @@ from sqlalchemy.orm import Session
 
 from app import crud, models
 from app.utils.reporting import month_label, standard_month_hours
-from .rag import retrieve_rag_context
 
 # Load environment variables from .env file
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_MODEL = "gemini-2.0-flash-lite"  # Fast experimental model, better availability
 
-try:  # pragma: no cover - optional dependency during import
-    from google import genai  # type: ignore
-    from google.genai import types as genai_types  # type: ignore
-except ImportError:  # pragma: no cover - handled at runtime when API invoked
-    genai = None
-    genai_types = None
+# Defer genai import to avoid hanging during module import
+# The import will happen in _ensure_client() when actually needed
+genai = None
+genai_types = None
 
 _CLIENT: Optional["genai.Client"] = None
 
@@ -42,11 +39,19 @@ class GeminiInvocationError(RuntimeError):
 
 
 def _ensure_client() -> "genai.Client":
-    global _CLIENT
-    if genai is None or genai_types is None:  # pragma: no cover - environment dependent
-        raise GeminiConfigurationError(
-            "google-genai is not installed. Install it with 'pip install google-genai'."
-        )
+    global _CLIENT, genai, genai_types
+    
+    # Lazy import of genai to avoid hanging during module import
+    if genai is None or genai_types is None:
+        try:
+            from google import genai as _genai  # type: ignore
+            from google.genai import types as _genai_types  # type: ignore
+            genai = _genai
+            genai_types = _genai_types
+        except ImportError:  # pragma: no cover - environment dependent
+            raise GeminiConfigurationError(
+                "google-genai is not installed. Install it with 'pip install google-genai'."
+            )
 
     if _CLIENT is not None:
         return _CLIENT
@@ -69,21 +74,45 @@ def _call_gemini(
     prompt: str,
     *,
     temperature: float = 0.25,
-    max_output_tokens: int = 1024,
+    max_output_tokens: int = 2048,
 ) -> str:
     client = _ensure_client()
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[prompt],
-            config=genai_types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-                response_modalities=["TEXT"],
-            ),
-        )
-    except Exception as exc:  # pragma: no cover - network/client dependent
-        raise GeminiInvocationError(f"Gemini request failed: {exc!s}") from exc
+    
+    max_retries = 1  # Reduced retries to fail faster
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+        try:
+            logger.info(f"Calling Gemini API: model={GEMINI_MODEL}, max_tokens={max_output_tokens}, attempt={retry_count+1}")
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[prompt],
+                config=genai_types.GenerateContentConfig(
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                    response_modalities=["TEXT"],
+                ),
+            )
+            logger.info("Gemini API call successful")
+            break
+        except Exception as exc:  # pragma: no cover - network/client dependent
+            retry_count += 1
+            error_str = str(exc).lower()
+            logger.error(f"Gemini API call failed: {exc} (attempt {retry_count}/{max_retries+1})")
+            
+            # Don't retry on certain errors
+            if 'rate limit' in error_str or 'quota' in error_str:
+                raise GeminiInvocationError(f"API quota exceeded: {exc!s}. Please wait a moment before trying again.") from exc
+            
+            # If we've exhausted retries, raise the error
+            if retry_count > max_retries:
+                raise GeminiInvocationError(f"Gemini request failed: {exc!s}. Try a simpler question or wait a moment.") from exc
+            
+            # Wait before retrying
+            import time
+            wait_time = 1  # Quick retry for Flash model
+            logger.info(f"Retrying in {wait_time} second...")
+            time.sleep(wait_time)
 
     if hasattr(response, "text") and response.text:
         return response.text.strip()
@@ -144,26 +173,44 @@ def generate_chat_response(
     *,
     query: str,
     context_limit: int,
+    manager_id: Optional[int] = None,
 ) -> Tuple[str, List[str]]:
     """Return an answer and the supporting sources for an AI chat query."""
+    from .rag import retrieve_rag_context
 
-    context = retrieve_rag_context(db, query, limit=context_limit)
+    context = retrieve_rag_context(db, query, limit=context_limit, manager_id=manager_id)
     if not context:
-        logger.info("No RAG context available for query; rebuilding cache")
-        context = retrieve_rag_context(db, query, limit=context_limit)
+        logger.info("No RAG context available for query; rebuilding cache for manager %s", manager_id)
+        from .rag import reindex_rag_cache
+        reindex_rag_cache(db, manager_id=manager_id)
+        context = retrieve_rag_context(db, query, limit=context_limit, manager_id=manager_id)
 
     prompt_context = _format_context_for_prompt(context)
+    
+    # Add current date context to help with relative time queries
+    from datetime import date
+    today = date.today()
+    current_month_year = f"{today.strftime('%B %Y')}"
+    
     prompt = (
         "You are StaffAlloc AI, assisting resource managers with staffing insights. "
-        "Use ONLY the provided context to answer the user's question accurately. "
-        "List specific projects, employees, and hours when relevant. If the context does not contain the answer, "
-        "state that you cannot find the requested information. Keep the response concise and actionable.\n\n"
+        f"Today is {today.isoformat()} ({current_month_year}). "
+        "Standard monthly work hours: 160-176h (depending on the month). 100% FTE = full capacity.\n\n"
+        "IMPORTANT: When asked about employee availability or capacity:\n"
+        "1. Calculate FTE% from their monthly allocations (total_hours / 176)\n"
+        "2. Available hours = 176 - total_hours\n"
+        "3. Show who has capacity (FTE < 80%) vs who is overloaded (FTE > 100%)\n"
+        "4. List specific numbers: hours, FTE%, and available capacity\n\n"
+        "Use the provided context to answer accurately. "
+        "List specific employees, projects, hours, and FTE%. "
+        "Use markdown: **bold** for names, bullet lists for clarity. "
+        "Be concise but complete.\n\n"
         f"Context:\n{prompt_context}\n\n"
         f"Question: {query}\n"
         "Answer:"
     )
 
-    answer = _call_gemini(prompt)
+    answer = _call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
     sources = [source for source, _ in context]
     return answer, sources
 
@@ -177,128 +224,41 @@ def _monthly_totals_for(db: Session, year: int, month: int) -> Dict[int, int]:
     }
 
 
-def _user_assignments(db: Session, cache: Dict[int, List[models.ProjectAssignment]], user_id: int) -> List[models.ProjectAssignment]:
-    if user_id not in cache:
-        cache[user_id] = crud.get_assignments_for_user(db, user_id)
-    return cache[user_id]
-
-
-def recommend_staffing_options(
-    db: Session,
-    *,
-    project_id: int,
-    year: int,
-    month: int,
-    required_hours: int,
-    role_id: Optional[int] = None,
-    lcat_id: Optional[int] = None,
-) -> Tuple[List[Dict[str, object]], str]:
-    project = crud.get_project(db, project_id)
-    if not project:
-        raise ValueError(f"Project {project_id} not found")
-
-    target_role = crud.get_role(db, role_id) if role_id else None
-    target_lcat = crud.get_lcat(db, lcat_id) if lcat_id else None
-
-    standard_hours = max(standard_month_hours(year, month), 1)
-    month_totals = _monthly_totals_for(db, year, month)
-
-    assignments_cache: Dict[int, List[models.ProjectAssignment]] = {}
-    existing_assignments = crud.get_assignments_for_project(db, project_id=project_id)
-    existing_user_ids = {assignment.user_id for assignment in existing_assignments}
-
-    employees = crud.get_users(
-        db,
-        limit=2000,
-        system_role=models.SystemRole.EMPLOYEE,
-        include_global=False,
-    )
-
-    candidates: List[Dict[str, object]] = []
-    for employee in employees:
-        if employee.id in existing_user_ids:
-            continue
-
-        employee_assignments = _user_assignments(db, assignments_cache, employee.id)
-
-        if role_id is not None and not any(a.role_id == role_id for a in employee_assignments):
-            continue
-
-        if lcat_id is not None and not any(a.lcat_id == lcat_id for a in employee_assignments):
-            continue
-
-        allocated_hours = month_totals.get(employee.id, 0)
-        current_fte = allocated_hours / standard_hours
-        available_hours = max(standard_hours - allocated_hours, 0)
-
-        candidates.append(
-            {
-                "user_id": employee.id,
-                "full_name": employee.full_name,
-                "email": employee.email,
-                "manager_id": employee.manager_id,
-                "current_fte": round(current_fte, 3),
-                "allocated_hours": allocated_hours,
-                "available_hours": available_hours,
-            }
-        )
-
-    candidates.sort(key=lambda item: (-(item["available_hours"] or 0), item["current_fte"]))
-    top_candidates = candidates[: min(5, len(candidates))]
-
-    if not top_candidates:
-        reasoning = (
-            "No employees meet the requested role/LCAT criteria with sufficient capacity in "
-            f"{month_label(year, month)}. Consider broadening the requirements or adjusting allocations."
-        )
-        return [], reasoning
-
-    context_lines = [
-        f"Project: {project.name} ({project.code})",  # type: ignore[arg-type]
-        f"Timeframe: {month_label(year, month)}",
-        f"Required hours: {required_hours}",
-        f"Target role: {target_role.name if target_role else 'Any'}, LCAT: {target_lcat.name if target_lcat else 'Any'}",
-        "Candidate availability:",
-    ]
-    for candidate in top_candidates:
-        context_lines.append(
-            f"- {candidate['full_name']} · current FTE {candidate['current_fte'] * 100:.1f}% "
-            f"· available {candidate['available_hours']}h"
-        )
-
-    prompt = (
-        "You are assisting a project manager in selecting staff. Using the candidate data provided, "
-        "recommend who should be staffed to cover the required hours. Reference the best-matched candidates "
-        "and note any risks or follow-up actions."
-        f"\n\n{os.linesep.join(context_lines)}\n\nRecommendation:"
-    )
-
-    reasoning = _call_gemini(prompt, temperature=0.1)
-    return top_candidates, reasoning
-
-
-def _collect_conflict_data(db: Session) -> Tuple[Dict[Tuple[int, int], Dict[int, int]], Dict[int, models.User]]:
+def _collect_conflict_data(db: Session, *, manager_id: Optional[int] = None) -> Tuple[Dict[Tuple[int, int], Dict[int, int]], Dict[int, models.User]]:
     monthly_totals = crud.get_monthly_user_project_allocations(db)
+    
+    # Get users filtered by manager if specified
+    users = crud.get_users(
+        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, manager_id=manager_id
+    )
+    user_ids = {user.id for user in users}
+    
+    # Filter monthly totals to only include users belonging to this manager
     totals: Dict[Tuple[int, int], Dict[int, int]] = defaultdict(lambda: defaultdict(int))
     for row in monthly_totals:
-        key = (int(row["year"]), int(row["month"]))
-        user_totals = totals[key]
-        user_totals[int(row["user_id"])] += int(row.get("allocated_hours") or 0)
+        user_id = int(row["user_id"])
+        if manager_id is None or user_id in user_ids:
+            key = (int(row["year"]), int(row["month"]))
+            user_totals = totals[key]
+            user_totals[user_id] += int(row.get("allocated_hours") or 0)
 
-    users = crud.get_users(
-        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, include_global=False
-    )
     return totals, {user.id: user for user in users}
 
 
-def scan_allocation_conflicts(db: Session) -> Tuple[List[Dict[str, object]], str]:
-    monthly_totals, user_lookup = _collect_conflict_data(db)
+def scan_allocation_conflicts(db: Session, *, manager_id: Optional[int] = None) -> Tuple[List[Dict[str, object]], str]:
+    monthly_totals, user_lookup = _collect_conflict_data(db, manager_id=manager_id)
+    
+    # Get user IDs for filtering
+    user_ids = set(user_lookup.keys())
 
     project_breakdown_rows = crud.get_monthly_user_project_allocations(db)
     breakdown: Dict[Tuple[int, int, int], List[Dict[str, object]]] = defaultdict(list)
     for row in project_breakdown_rows:
-        key = (int(row["user_id"]), int(row["year"]), int(row["month"]))
-        breakdown[key].append(row)
+        user_id = int(row["user_id"])
+        # Only include breakdown for manager's employees
+        if manager_id is None or user_id in user_ids:
+            key = (user_id, int(row["year"]), int(row["month"]))
+            breakdown[key].append(row)
 
     conflicts: List[Dict[str, object]] = []
     today = date.today()
@@ -370,18 +330,22 @@ def scan_allocation_conflicts(db: Session) -> Tuple[List[Dict[str, object]], str
     return conflicts, message
 
 
-def generate_forecast_insights(db: Session, *, months_ahead: int = 3) -> Tuple[List[Dict[str, object]], str]:
+def generate_forecast_insights(db: Session, *, months_ahead: int = 3, manager_id: Optional[int] = None) -> Tuple[List[Dict[str, object]], str]:
     today = date.today()
     employees = crud.get_users(
-        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, include_global=False
+        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, manager_id=manager_id
     )
     employee_count = len(employees) or 1
+    user_ids = {employee.id for employee in employees}
 
     allocations = crud.get_monthly_user_project_allocations(db)
     allocations_by_month: Dict[Tuple[int, int], int] = defaultdict(int)
     for row in allocations:
-        key = (int(row["year"]), int(row["month"]))
-        allocations_by_month[key] += int(row.get("allocated_hours") or 0)
+        user_id = int(row["user_id"])
+        # Only include allocations for manager's employees
+        if manager_id is None or user_id in user_ids:
+            key = (int(row["year"]), int(row["month"]))
+            allocations_by_month[key] += int(row.get("allocated_hours") or 0)
 
     predictions: List[Dict[str, object]] = []
     current_year = today.year
@@ -450,22 +414,28 @@ def generate_workload_balance_suggestions(
     db: Session,
     *,
     project_id: Optional[int] = None,
+    manager_id: Optional[int] = None,
 ) -> Tuple[List[Dict[str, object]], str]:
     today = date.today()
     standard_hours = max(standard_month_hours(today.year, today.month), 1)
 
-    monthly_totals = _monthly_totals_for(db, today.year, today.month)
+    all_monthly_totals = _monthly_totals_for(db, today.year, today.month)
 
     employees = crud.get_users(
-        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, include_global=False
+        db, limit=2000, system_role=models.SystemRole.EMPLOYEE, manager_id=manager_id
     )
     employee_lookup = {employee.id: employee for employee in employees}
+    user_ids = set(employee_lookup.keys())
+    
+    # Filter monthly totals to only include manager's employees
+    monthly_totals = {user_id: hours for user_id, hours in all_monthly_totals.items() if manager_id is None or user_id in user_ids}
 
     if project_id is not None:
         assignments = crud.get_assignments_for_project(db, project_id=project_id)
-        relevant_user_ids = {assignment.user_id for assignment in assignments}
+        # Filter to only include manager's employees
+        relevant_user_ids = {assignment.user_id for assignment in assignments if assignment.user_id in user_ids}
     else:
-        relevant_user_ids = set(employee_lookup.keys())
+        relevant_user_ids = user_ids
 
     over_allocated: List[Tuple[models.User, int, float]] = []
     under_allocated: List[Tuple[models.User, int, float]] = []
@@ -481,6 +451,42 @@ def generate_workload_balance_suggestions(
         elif fte < 0.5:
             under_allocated.append((user, hours, fte))
 
+    # Get project assignments for overloaded and underutilized users to provide context
+    from_user_ids = [user.id for user, _, _ in over_allocated]
+    to_user_ids = [user.id for user, _, _ in under_allocated]
+    
+    # Fetch all relevant assignments
+    from_assignments_map = {}
+    to_assignments_map = {}
+    
+    for user_id in from_user_ids:
+        assignments = crud.get_assignments_for_user(db, user_id)
+        # Get allocations for current month
+        from_assignments_map[user_id] = []
+        for assignment in assignments:
+            project = crud.get_project(db, assignment.project_id)
+            if project:
+                # Check if there are allocations for this month
+                current_month_allocs = [a for a in assignment.allocations if a.year == today.year and a.month == today.month and a.allocated_hours > 0]
+                if current_month_allocs:
+                    from_assignments_map[user_id].append({
+                        'project_id': project.id,
+                        'project_name': project.name,
+                        'assignment_id': assignment.id
+                    })
+    
+    for user_id in to_user_ids:
+        assignments = crud.get_assignments_for_user(db, user_id)
+        to_assignments_map[user_id] = []
+        for assignment in assignments:
+            project = crud.get_project(db, assignment.project_id)
+            if project:
+                to_assignments_map[user_id].append({
+                    'project_id': project.id,
+                    'project_name': project.name,
+                    'assignment_id': assignment.id
+                })
+    
     suggestions: List[Dict[str, object]] = []
     for overloaded_user, overloaded_hours, fte in sorted(over_allocated, key=lambda item: item[2], reverse=True):
         overload_amount = overloaded_hours - standard_hours
@@ -493,12 +499,33 @@ def generate_workload_balance_suggestions(
             shift_hours = min(overload_amount, available, standard_hours // 2)
             if shift_hours <= 0:
                 continue
+            # Calculate FTE percentages
+            from_fte = round(overloaded_hours / standard_hours, 2)
+            to_fte = round(idle_hours / standard_hours, 2)
+            from_fte_after = round((overloaded_hours - shift_hours) / standard_hours, 2)
+            to_fte_after = round((idle_hours + shift_hours) / standard_hours, 2)
+            
+            reasoning = f"Transfer {int(shift_hours)}h to balance workload. {overloaded_user.full_name} will go from {int(from_fte * 100)}% to {int(from_fte_after * 100)}% FTE, while {idle_user.full_name} will go from {int(to_fte * 100)}% to {int(to_fte_after * 100)}% FTE."
+            
+            # Get projects for both employees
+            from_projects = from_assignments_map.get(overloaded_user.id, [])
+            to_projects = to_assignments_map.get(idle_user.id, [])
+            
             suggestions.append(
                 {
                     "action": "rebalance_allocation",
                     "from_employee": overloaded_user.full_name,
+                    "from_employee_id": overloaded_user.id,
+                    "from_employee_current_fte": from_fte,
+                    "from_employee_current_hours": int(overloaded_hours),
+                    "from_employee_projects": from_projects,
                     "to_employee": idle_user.full_name,
+                    "to_employee_id": idle_user.id,
+                    "to_employee_current_fte": to_fte,
+                    "to_employee_current_hours": int(idle_hours),
+                    "to_employee_projects": to_projects,
                     "recommended_hours": int(shift_hours),
+                    "reasoning": reasoning,
                 }
             )
             overload_amount -= shift_hours

@@ -32,11 +32,21 @@
 - [Contributing](#contributing)
 - [Support](#support)
 
+> **📝 Note:** For a complete list of all fixes, improvements, and changes, see [CHANGELOG.md](CHANGELOG.md)
+
 ---
 
 ## 🎯 Overview
 
-**StaffAlloc** is an intelligent, AI-powered staffing management application designed to replace cumbersome and error-prone spreadsheets. It provides project managers, directors, and resource managers with a centralized platform to create projects, allocate employee hours, track budgets, and optimize resource utilization across the entire organization.
+**StaffAlloc** is an intelligent, AI-powered staffing management application designed to replace cumbersome and error-prone spreadsheets. It provides project managers with a centralized platform to create projects, allocate employee hours, track budgets, and optimize resource utilization across their teams.
+
+### 🔒 Manager-Specific Data Isolation
+
+StaffAlloc enforces **strict data isolation** where each manager (PM) has their own isolated workspace:
+- ✅ Managers see **only their own projects**
+- ✅ Managers see **only their own employees**
+- ✅ Managers create **their own roles and LCATs**
+- ✅ **Complete data privacy** between different managers
 
 ### Purpose
 
@@ -65,17 +75,20 @@ Transform resource management from a reactive, administrative chore into a proac
 ### Advanced Features
 
 - **🤖 AI-Powered Recommendations**: Intelligent staffing suggestions based on availability and skills
-- **📊 Portfolio Dashboard**: Organization-wide resource utilization and health metrics
+- **📊 Manager Dashboard**: Manager-specific allocation rollup grid with date range selector
 - **📅 Timeline Views**: Sprint-based and monthly allocation timelines
 - **📑 Comprehensive Reports**: Export capabilities and executive summaries
 - **🔍 Employee Timeline**: Cross-project view of individual resource commitments
+- **💬 Project-Scoped AI Chat**: Ask availability questions directly on project pages
 
 ### AI Capabilities (V1.3+)
 
-- **💬 RAG Chat Interface**: Natural language queries about staffing and allocations
-- **🎯 Conflict Resolution**: AI-driven suggestions for resolving over-allocations
+- **💬 RAG Chat Interface**: Natural language queries about staffing and allocations (manager-scoped)
+- **🎯 Auto-Running Conflict Monitor**: Automatically detects over-allocations on page load
+- **🔧 AI Conflict Resolution**: Automatically suggests solutions when conflicts are detected
 - **📈 Predictive Forecasting**: Future hiring needs based on project pipeline
 - **⚖️ Workload Balancing**: Recommendations to prevent burnout and optimize efficiency
+- **🔍 Availability Search**: "Who is free to work 200 hours from Mar-Oct 2026?" queries
 
 ---
 
@@ -211,8 +224,11 @@ mkdir -p data
 # Initialize database
 python -c "from app.db.session import create_db_and_tables; create_db_and_tables()"
 
-# Load seed data (optional)
-sqlite3 data/staffalloc.db < ../schema.sql
+# Load seed data with multiple managers (recommended)
+python seed_multiple_managers.py
+
+# OR run migration on existing database
+python migrate_remove_director.py
 
 # Start the backend server
 uvicorn app.main:app --reload --port 8000
@@ -243,6 +259,20 @@ Open your browser and navigate to:
 - **Frontend**: http://localhost:5173
 - **API Documentation**: http://localhost:8000/api/docs
 - **Health Check**: http://localhost:8000/health
+
+#### 5. Login with Test Credentials
+
+After running `seed_multiple_managers.py`:
+
+**Manager Accounts:**
+- Email: `sarah.martinez@staffalloc.com` / Password: `manager123`
+- Email: `james.wilson@staffalloc.com` / Password: `manager123`
+- Email: `aisha.patel@staffalloc.com` / Password: `manager123`
+
+**Admin Account:**
+- Email: `admin@staffalloc.com` / Password: `admin123`
+
+Each manager has their own isolated workspace with projects, employees, roles, and LCATs.
 
 ---
 
@@ -403,16 +433,18 @@ Once the backend is running, interactive API documentation is available at:
 
 ### Key Endpoints
 
+**⚠️ Important**: All endpoints require manager context for data isolation.
+
 #### Projects (`/api/v1/projects`)
 - `POST /` - Create a new project
-- `GET /` - List all projects
+- `GET /?manager_id={id}` - List manager's projects (**required parameter**)
 - `GET /{id}` - Get project details with allocations
 - `PUT /{id}` - Update project
 - `DELETE /{id}` - Delete project
 
 #### Employees (`/api/v1/employees`)
-- `POST /` - Create employee
-- `GET /` - List all employees
+- `POST /` - Create employee (automatically assigned to manager)
+- `GET /?manager_id={id}` - List manager's employees (**required parameter**)
 - `GET /{id}` - Get employee with assignments
 - `PUT /{id}` - Update employee
 - `DELETE /{id}` - Delete employee
@@ -430,10 +462,22 @@ Once the backend is running, interactive API documentation is available at:
 - `GET /employee-timeline/{id}` - Employee allocation timeline
 
 #### Admin (`/api/v1/admin`)
-- `POST /roles/` - Create role
-- `GET /roles/` - List roles
-- `POST /lcats/` - Create LCAT
-- `GET /lcats/` - List LCATs
+- `POST /roles/` - Create role (scoped to manager)
+- `GET /roles/?owner_id={id}` - List manager's roles (**required parameter**)
+- `POST /lcats/` - Create LCAT (scoped to manager)
+- `GET /lcats/?owner_id={id}` - List manager's LCATs (**required parameter**)
+
+#### AI (`/api/v1/ai`)
+- `POST /chat` - Chat with AI assistant (requires `manager_id`)
+- `POST /recommend-staff` - Get staffing recommendations (requires `manager_id`)
+- `GET /conflicts` - Detect allocation conflicts (manager-scoped)
+- `GET /forecast` - Generate capacity forecast (manager-scoped)
+- `GET /balance-suggestions` - Get workload balancing tips (manager-scoped)
+
+#### New: Manager Allocations
+- `GET /reports/manager-allocations` - Dashboard rollup grid
+  - Required: `manager_id`, `start_year`, `start_month`, `end_year`, `end_month`
+  - Returns: All employees with monthly allocation totals across all projects
 
 ---
 
@@ -520,7 +564,25 @@ For detailed testing documentation, see [`tests/TESTING_SECURITY_OVERVIEW.md`](t
 
 ### Database Migrations
 
-For schema changes:
+**Manager-Specific Isolation Migration:**
+
+```bash
+cd Artifacts/backend
+
+# Backup existing database
+cp data/staffalloc.db data/staffalloc.db.backup
+
+# Run migration to remove Director role and ensure data isolation
+python migrate_remove_director.py
+
+# OR create fresh test data with multiple managers
+python seed_multiple_managers.py
+
+# Verify data
+python verify_seed.py
+```
+
+For schema exploration:
 
 ```bash
 # Connect to SQLite database
@@ -605,11 +667,13 @@ Comprehensive documentation is available in the `Artifacts/Documentation/` direc
 | [`user_stories.json`](Artifacts/Documentation/user_stories.json) | User Stories & Acceptance Criteria |
 
 Additional resources:
+- [**Changelog**](CHANGELOG.md) - **Complete list of fixes, improvements, and changes**
 - [Backend Quick Start Guide](Artifacts/backend/QUICKSTART.md)
 - [Backend Review Report](Artifacts/backend/BACKEND_REVIEW.md)
 - [Frontend Setup Guide](reactapp/README.md)
 - [Integration Guide](INTEGRATION_GUIDE.md)
 - [Testing Overview](tests/TESTING_SECURITY_OVERVIEW.md)
+- [**Migration Guide**](MIGRATION_GUIDE.md) - **Manager-specific data isolation changes**
 
 ---
 
@@ -665,10 +729,23 @@ npm run dev -- --port 5174
 
 #### Database Issues
 ```bash
-# Reset database
-rm Artifacts/backend/data/staffalloc.db
-python -c "from app.db.session import create_db_and_tables; create_db_and_tables()"
+# Reset database and create test data
+cd Artifacts/backend
+rm data/staffalloc.db data/staffalloc.db-shm data/staffalloc.db-wal
+python seed_multiple_managers.py
 ```
+
+#### Manager Data Isolation Issues
+```bash
+# Verify each manager's data is isolated
+cd Artifacts/backend
+python verify_seed.py
+
+# Should show separate data for each manager
+```
+
+#### Migration Issues
+See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for detailed troubleshooting and rollback procedures.
 
 ### Getting Help
 

@@ -52,22 +52,28 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const { data: project, isLoading, isError, error } = useProjectDetail(projectId);
   const rolesQuery = useQuery({
-    queryKey: ['roles', user?.id ?? 'all'],
-    queryFn: () =>
-      fetchRoles({ ownerId: user?.system_role === 'PM' ? user.id : undefined, includeGlobal: true })
+    queryKey: ['roles', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.resolve([]);
+      return fetchRoles({ ownerId: user.id });
+    },
+    enabled: !!user?.id
   });
   const lcatsQuery = useQuery({
-    queryKey: ['lcats', user?.id ?? 'all'],
-    queryFn: () =>
-      fetchLCATs({ ownerId: user?.system_role === 'PM' ? user.id : undefined, includeGlobal: true })
+    queryKey: ['lcats', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.resolve([]);
+      return fetchLCATs({ ownerId: user.id });
+    },
+    enabled: !!user?.id
   });
   const employeesQuery = useQuery({
-    queryKey: ['employees', user?.id ?? 'all'],
-    queryFn: () =>
-      fetchEmployees({
-        managerId: user?.system_role === 'PM' ? user.id : undefined,
-        includeGlobal: true
-      })
+    queryKey: ['employees', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.resolve([]);
+      return fetchEmployees({ managerId: user.id });
+    },
+    enabled: !!user?.id
   });
 
   const { create: createOverrideMutation, update: updateOverrideMutation, remove: deleteOverrideMutation } =
@@ -500,18 +506,6 @@ export default function ProjectDetailPage() {
       </section>
 
       <section className="space-y-4">
-        <SectionHeader
-          title="AI Assist"
-          description="Use AI to recommend staffing, detect conflicts, and balance workloads for this project."
-        />
-        <ProjectAIInsights
-          projectId={project.id}
-          roles={rolesQuery.data ?? []}
-          lcats={lcatsQuery.data ?? []}
-        />
-      </section>
-
-      <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-800">Allocation Grid</h2>
           <div className="flex items-center gap-4">
@@ -557,6 +551,18 @@ export default function ProjectDetailPage() {
             setDistributingAssignment(assignment);
           }}
           onRemoveAssignment={handleRemoveAssignment}
+        />
+      </section>
+
+      <section className="space-y-4 mt-8">
+        <SectionHeader
+          title="AI Assist"
+          description="Use AI to recommend staffing, detect conflicts, and balance workloads for this project."
+        />
+        <ProjectAIInsights
+          projectId={project.id}
+          roles={rolesQuery.data ?? []}
+          lcats={lcatsQuery.data ?? []}
         />
       </section>
 

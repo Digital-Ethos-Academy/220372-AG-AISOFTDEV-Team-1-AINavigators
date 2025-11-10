@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,6 @@ from app.services.ai import (
     generate_chat_response,
     generate_forecast_insights,
     generate_workload_balance_suggestions,
-    recommend_staffing_options,
     reindex_rag_cache,
     scan_allocation_conflicts,
 )
@@ -33,6 +32,7 @@ router = APIRouter(
 
 class ChatQueryRequest(BaseModel):
     query: str = Field(..., description="The user's question", min_length=3)
+    manager_id: Optional[int] = Field(None, description="Manager ID for data isolation (optional)")
     context_limit: int = Field(
         5,
         description="Number of context documents to retrieve",
@@ -45,30 +45,6 @@ class ChatQueryResponse(BaseModel):
     query: str
     answer: str
     sources: List[str] = Field(default_factory=list)
-
-
-class StaffingRecommendationRequest(BaseModel):
-    project_id: int
-    role_id: Optional[int] = Field(None, description="Filter by role ID")
-    lcat_id: Optional[int] = Field(None, description="Filter by LCAT ID")
-    year: int = Field(..., ge=2020, le=2050)
-    month: int = Field(..., ge=1, le=12)
-    required_hours: int = Field(..., ge=1)
-
-
-class StaffingRecommendationCandidate(BaseModel):
-    user_id: int
-    full_name: str
-    email: Optional[EmailStr] = None
-    manager_id: Optional[int] = None
-    current_fte: float
-    allocated_hours: int
-    available_hours: int
-
-
-class StaffingRecommendationResponse(BaseModel):
-    candidates: List[StaffingRecommendationCandidate] = Field(default_factory=list)
-    reasoning: str
 
 
 class ConflictProjectBreakdown(BaseModel):
@@ -105,11 +81,28 @@ class ForecastResponse(BaseModel):
     message: str
 
 
+class ProjectInfo(BaseModel):
+    project_id: int
+    project_name: str
+    assignment_id: int
+
+
 class BalanceSuggestion(BaseModel):
     action: str
     from_employee: Optional[str] = None
+    from_employee_id: Optional[int] = None
+    from_employee_current_fte: Optional[float] = None
+    from_employee_current_hours: Optional[int] = None
+    from_employee_projects: List[ProjectInfo] = Field(default_factory=list)
     to_employee: Optional[str] = None
+    to_employee_id: Optional[int] = None
+    to_employee_current_fte: Optional[float] = None
+    to_employee_current_hours: Optional[int] = None
+    to_employee_projects: List[ProjectInfo] = Field(default_factory=list)
     recommended_hours: int
+    project_name: Optional[str] = None
+    project_id: Optional[int] = None
+    reasoning: Optional[str] = None
 
 
 class BalanceSuggestionsResponse(BaseModel):
@@ -143,61 +136,17 @@ def _raise_from_ai_error(exc: Exception) -> None:
     summary="Query the AI assistant using RAG",
 )
 def chat_query(request: ChatQueryRequest, db: Session = Depends(get_db)) -> ChatQueryResponse:
-    logger.info("AI chat query received", extra={"query": request.query})
+    logger.info("AI chat query received", extra={"query": request.query, "manager_id": request.manager_id})
     try:
         answer, sources = generate_chat_response(
-            db, query=request.query, context_limit=request.context_limit
+            db, 
+            query=request.query, 
+            context_limit=request.context_limit,
+            manager_id=request.manager_id
         )
     except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover - error paths
         _raise_from_ai_error(exc)
     return ChatQueryResponse(query=request.query, answer=answer, sources=sources)
-
-
-@router.post(
-    "/recommend-staff",
-    response_model=StaffingRecommendationResponse,
-    summary="Get AI recommendations for staffing",
-)
-def recommend_staff(
-    request: StaffingRecommendationRequest,
-    db: Session = Depends(get_db),
-) -> StaffingRecommendationResponse:
-    project = crud.get_project(db, request.project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID {request.project_id} not found",
-        )
-
-    if request.role_id is not None and not crud.get_role(db, request.role_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role with ID {request.role_id} not found",
-        )
-
-    if request.lcat_id is not None and not crud.get_lcat(db, request.lcat_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"LCAT with ID {request.lcat_id} not found",
-        )
-
-    try:
-        candidates, reasoning = recommend_staffing_options(
-            db,
-            project_id=request.project_id,
-            year=request.year,
-            month=request.month,
-            required_hours=request.required_hours,
-            role_id=request.role_id,
-            lcat_id=request.lcat_id,
-        )
-    except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover - error paths
-        _raise_from_ai_error(exc)
-
-    candidate_models = [
-        StaffingRecommendationCandidate(**candidate) for candidate in candidates
-    ]
-    return StaffingRecommendationResponse(candidates=candidate_models, reasoning=reasoning)
 
 
 @router.get(
@@ -205,9 +154,12 @@ def recommend_staff(
     response_model=ConflictsResponse,
     summary="Detect resource allocation conflicts",
 )
-def detect_conflicts(db: Session = Depends(get_db)) -> ConflictsResponse:
+def detect_conflicts(
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation"),
+    db: Session = Depends(get_db)
+) -> ConflictsResponse:
     try:
-        conflicts, message = scan_allocation_conflicts(db)
+        conflicts, message = scan_allocation_conflicts(db, manager_id=manager_id)
     except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
         _raise_from_ai_error(exc)
 
@@ -238,11 +190,13 @@ def detect_conflicts(db: Session = Depends(get_db)) -> ConflictsResponse:
     summary="Get predictive resource forecasts",
 )
 def get_forecast(
-    months_ahead: int = 3, db: Session = Depends(get_db)
+    months_ahead: int = 3,
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation"),
+    db: Session = Depends(get_db)
 ) -> ForecastResponse:
     try:
         predictions, message = generate_forecast_insights(
-            db, months_ahead=months_ahead
+            db, months_ahead=months_ahead, manager_id=manager_id
         )
     except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
         _raise_from_ai_error(exc)
@@ -264,11 +218,12 @@ def get_forecast(
 )
 def get_balance_suggestions(
     project_id: Optional[int] = None,
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation"),
     db: Session = Depends(get_db),
 ) -> BalanceSuggestionsResponse:
     try:
         suggestions, message = generate_workload_balance_suggestions(
-            db, project_id=project_id
+            db, project_id=project_id, manager_id=manager_id
         )
     except (GeminiConfigurationError, GeminiInvocationError) as exc:  # pragma: no cover
         _raise_from_ai_error(exc)
@@ -286,7 +241,7 @@ def get_balance_suggestions(
     summary="Trigger RAG cache reindexing",
 )
 def trigger_reindex(db: Session = Depends(get_db)) -> ReindexResponse:
-    documents_created = reindex_rag_cache(db)
+    documents_created = reindex_rag_cache(db, manager_id=None)
     message = f"RAG cache refreshed with {documents_created} documents."
     return ReindexResponse(status="accepted", message=message)
 

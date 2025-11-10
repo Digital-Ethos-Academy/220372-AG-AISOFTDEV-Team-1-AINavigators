@@ -11,7 +11,7 @@ const employeeSchema = z.object({
   email: z.string().email('Enter a valid email address'),
   full_name: z.string().min(2, 'Full name is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  system_role: z.enum(['Employee', 'PM', 'Director', 'Admin']),
+  system_role: z.enum(['Employee', 'PM', 'Admin']),
   is_active: z.boolean()
 });
 
@@ -169,7 +169,6 @@ export default function AddEmployeeModal({
                       >
                         <option value="Employee">Employee (Team Member)</option>
                         <option value="PM">PM (Project Manager)</option>
-                        <option value="Director">Director (Portfolio Oversight)</option>
                         <option value="Admin">Admin (Full Access)</option>
                       </select>
                       {errors.system_role && <p className="mt-1 text-sm text-red-600">{errors.system_role.message}</p>}

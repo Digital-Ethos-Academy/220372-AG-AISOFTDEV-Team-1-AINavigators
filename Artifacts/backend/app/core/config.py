@@ -52,15 +52,12 @@ class Settings(BaseSettings):
     # A list of origins that are allowed to make cross-origin requests.
     # The default includes the standard local development ports for React/Vite.
     # Use ["*"] to allow all origins (less secure).
-    CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = [
+    BACKEND_CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = [
         "http://localhost:5173",  # Default Vite/React dev server
         "http://localhost:3000",  # Common alternative for React
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
-    
-    # Alias for compatibility with main.py
-    BACKEND_CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = CORS_ORIGINS
 
     # --- Local Storage Paths ---
     # As per the architecture document, all data is stored locally.

@@ -5,9 +5,7 @@ import type {
   ChatQueryResponse,
   ConflictsResponse,
   ForecastResponse,
-  ReindexResponse,
-  StaffingRecommendationRequestPayload,
-  StaffingRecommendationResponse
+  ReindexResponse
 } from '../types/api';
 
 export async function chatWithAI(payload: ChatQueryRequest): Promise<ChatQueryResponse> {
@@ -15,42 +13,32 @@ export async function chatWithAI(payload: ChatQueryRequest): Promise<ChatQueryRe
   return data;
 }
 
-export async function recommendStaff(
-  payload: StaffingRecommendationRequestPayload
-): Promise<StaffingRecommendationResponse> {
-  const body: StaffingRecommendationRequestPayload = {
-    project_id: payload.project_id,
-    year: payload.year,
-    month: payload.month,
-    required_hours: payload.required_hours
-  };
-
-  if (payload.role_id) {
-    body.role_id = payload.role_id;
-  }
-  if (payload.lcat_id) {
-    body.lcat_id = payload.lcat_id;
-  }
-
-  const { data } = await api.post<StaffingRecommendationResponse>('/ai/recommend-staff', body);
+export async function fetchConflicts(managerId?: number): Promise<ConflictsResponse> {
+  const { data } = await api.get<ConflictsResponse>('/ai/conflicts', {
+    params: managerId ? { manager_id: managerId } : undefined
+  });
   return data;
 }
 
-export async function fetchConflicts(): Promise<ConflictsResponse> {
-  const { data } = await api.get<ConflictsResponse>('/ai/conflicts');
-  return data;
-}
-
-export async function fetchForecast(monthsAhead = 3): Promise<ForecastResponse> {
-  const { data } = await api.get<ForecastResponse>('/ai/forecast', { params: { months_ahead: monthsAhead } });
+export async function fetchForecast(monthsAhead = 3, managerId?: number): Promise<ForecastResponse> {
+  const { data } = await api.get<ForecastResponse>('/ai/forecast', { 
+    params: { 
+      months_ahead: monthsAhead,
+      ...(managerId ? { manager_id: managerId } : {})
+    } 
+  });
   return data;
 }
 
 export async function fetchBalanceSuggestions(
-  projectId?: number
+  projectId?: number,
+  managerId?: number
 ): Promise<BalanceSuggestionsResponse> {
   const { data } = await api.get<BalanceSuggestionsResponse>('/ai/balance-suggestions', {
-    params: projectId ? { project_id: projectId } : undefined
+    params: { 
+      ...(projectId ? { project_id: projectId } : {}),
+      ...(managerId ? { manager_id: managerId } : {})
+    }
   });
   return data;
 }

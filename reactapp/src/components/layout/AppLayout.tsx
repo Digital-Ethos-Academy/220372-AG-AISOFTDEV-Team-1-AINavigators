@@ -25,9 +25,9 @@ export default function AppLayout() {
     { to: '/dashboard', label: 'Portfolio Dashboard', icon: LayoutDashboard },
     { to: '/projects', label: 'Projects', icon: CalendarDays },
     { to: '/teams', label: 'Teams', icon: Users },
-    { to: '/ai/chat', label: 'AI Assistant', icon: Sparkles, roles: ['Admin', 'Director', 'PM'] },
-    { to: '/ai/recommendations', label: 'AI Insights', icon: Sparkles, roles: ['Admin', 'Director'] },
-    { to: '/settings/roles-lcats', label: 'Settings', icon: Settings, roles: ['Admin', 'PM', 'Director'] }
+    { to: '/ai/chat', label: 'AI Assistant', icon: Sparkles, roles: ['Admin', 'PM'] },
+    { to: '/ai/recommendations', label: 'AI Insights', icon: Sparkles, roles: ['Admin', 'PM'] },
+    { to: '/settings/roles-lcats', label: 'Settings', icon: Settings, roles: ['Admin', 'PM'] }
   ];
 
   const availableNavItems = navItems.filter(

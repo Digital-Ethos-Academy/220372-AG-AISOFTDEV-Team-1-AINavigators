@@ -55,24 +55,24 @@ def create_role(role: schemas.RoleCreate, db: Session = Depends(get_db)):
 @router.get(
     "/roles/",
     response_model=List[schemas.RoleResponse],
-    summary="Get all roles",
+    summary="Get roles for a specific manager",
 )
 def read_roles(
+    owner_id: Optional[int] = Query(None, description="Manager ID for data isolation (optional)"),
     skip: int = 0,
     limit: int = Query(default=100, lte=200),
-    owner_id: Optional[int] = Query(None, description="Filter by owning manager ID"),
-    include_global: bool = Query(True, description="Include shared/global roles when filtering"),
     db: Session = Depends(get_db),
 ):
     """
-    Retrieve a list of all available job roles.
+    Retrieve a list of job roles.
+    If owner_id is provided, only returns roles created by that manager.
+    If owner_id is None, returns all roles (for admins/global views).
     """
     roles = crud.get_roles(
         db,
         skip=skip,
         limit=limit,
         owner_id=owner_id,
-        include_global=include_global,
     )
     return roles
 
@@ -150,24 +150,24 @@ def create_lcat(lcat: schemas.LCATCreate, db: Session = Depends(get_db)):
 @router.get(
     "/lcats/",
     response_model=List[schemas.LCATResponse],
-    summary="Get all LCATs",
+    summary="Get LCATs for a specific manager",
 )
 def read_lcats(
+    owner_id: Optional[int] = Query(None, description="Manager ID for data isolation (optional)"),
     skip: int = 0,
     limit: int = Query(default=100, lte=200),
-    owner_id: Optional[int] = Query(None, description="Filter by owning manager ID"),
-    include_global: bool = Query(True, description="Include shared/global LCATs when filtering"),
     db: Session = Depends(get_db),
 ):
     """
-    Retrieve a list of all available Labor Categories.
+    Retrieve a list of Labor Categories.
+    If owner_id is provided, only returns LCATs created by that manager.
+    If owner_id is None, returns all LCATs (for admins/global views).
     """
     lcats = crud.get_lcats(
         db,
         skip=skip,
         limit=limit,
         owner_id=owner_id,
-        include_global=include_global,
     )
     return lcats
 

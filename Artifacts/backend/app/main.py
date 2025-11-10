@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 
 # Import routers from the api package
-from app.api import admin, ai, allocations, employees, projects, reports
+from app.api import admin, ai, allocations, auth, employees, projects, reports
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.db.session import create_db_and_tables, get_db
@@ -63,12 +63,15 @@ def create_app() -> FastAPI:
     )
 
     # --- Middleware Configuration ---
+    # Configure CORS to allow requests from the frontend
+    cors_origins = [str(origin) for origin in settings.BACKEND_CORS_ORIGINS]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["*"],  # Allow frontend to read all response headers
     )
 
     # --- Event Handlers (Startup/Shutdown) ---
@@ -80,6 +83,13 @@ def create_app() -> FastAPI:
         - Ensures necessary data directories exist for the local-first setup.
         """
         logger.info("Starting up StaffAlloc API...")
+        
+        # Log CORS configuration for debugging
+        logger.info(
+            "CORS configured",
+            allowed_origins=cors_origins,
+        )
+        
         # Ensure data directories exist as per the architecture document
         Path(settings.SQLITE_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         Path(settings.VECTOR_STORE_PATH).mkdir(parents=True, exist_ok=True)
@@ -132,6 +142,7 @@ def create_app() -> FastAPI:
 
     # --- API Router Inclusions ---
     api_v1_prefix = settings.API_V1_STR
+    app.include_router(auth.router, prefix=api_v1_prefix, tags=["Authentication"])
     app.include_router(projects.router, prefix=api_v1_prefix, tags=["Projects"])
     app.include_router(allocations.router, prefix=api_v1_prefix, tags=["Allocations"])
     app.include_router(employees.router, prefix=api_v1_prefix, tags=["Employees"])

@@ -313,18 +313,6 @@ def test_reports_project_dashboard_not_found(client):
 # ---------------------------------------------------------------------------
 
 
-def test_ai_recommend_staff_missing_dependencies(client):
-    payload = {
-        "project_id": 9999,
-        "role_id": 9999,
-        "year": 2025,
-        "month": 1,
-        "required_hours": 160,
-    }
-    response = client.post(f"{API_V1_PREFIX}/ai/recommend-staff", json=payload)
-    assert response.status_code == 404
-
-
 def test_ai_chat_empty_query(client):
     payload = {"query": "", "context_limit": 3}
     response = client.post(f"{API_V1_PREFIX}/ai/chat", json=payload)

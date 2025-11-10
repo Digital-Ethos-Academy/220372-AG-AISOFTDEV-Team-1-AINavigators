@@ -8,7 +8,7 @@ import {
   type PropsWithChildren
 } from 'react';
 
-import { fetchEmployees } from '../api/users';
+import { login as apiLogin } from '../api/auth';
 import type { EmployeeListItem, SystemRole } from '../types/api';
 
 interface AuthState {
@@ -54,21 +54,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const login = useCallback(
-    async ({ email }: { email: string; password: string }) => {
+    async ({ email, password }: { email: string; password: string }) => {
       setLoading(true);
       try {
-        const employees = await fetchEmployees();
-        const normalizedEmail = email.trim().toLowerCase();
-        const match = employees.find((employee) => employee.email.toLowerCase() === normalizedEmail);
-        if (!match) {
-          throw new Error('Account not found. Contact your administrator.');
-        }
-        if (match.system_role === 'Employee') {
-          throw new Error('Employee accounts are read-only. Request PM or Director access.');
-        }
-        setUser(match);
+        const response = await apiLogin({ email, password });
+        setUser(response.user);
         setToken(null);
-        persist(match, null);
+        persist(response.user, null);
       } finally {
         setLoading(false);
       }

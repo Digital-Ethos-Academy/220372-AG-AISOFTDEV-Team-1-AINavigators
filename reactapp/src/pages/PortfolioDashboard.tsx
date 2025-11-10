@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertOctagon,
@@ -8,53 +7,46 @@ import {
   PieChart,
   Users
 } from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
 
 import { exportPortfolioToExcel, fetchPortfolioDashboard } from '../api/reports';
 import { Card, KpiTile, SectionHeader } from '../components/common';
 import { saveBlobAsFile } from '../utils/download';
+import { useAuth } from '../context/AuthContext';
+import ManagerAllocationGrid from '../components/dashboard/ManagerAllocationGrid';
 
 export default function PortfolioDashboard() {
+  const { user } = useAuth();
+  
   const portfolioQuery = useQuery({
-    queryKey: ['portfolio-dashboard'],
-    queryFn: fetchPortfolioDashboard,
+    queryKey: ['portfolio-dashboard', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.reject(new Error('User not authenticated'));
+      return fetchPortfolioDashboard(user.id);
+    },
+    enabled: !!user?.id,
     staleTime: 60_000
   });
 
   const exportMutation = useMutation({
-    mutationFn: exportPortfolioToExcel,
+    mutationFn: () => {
+      if (!user?.id) return Promise.reject(new Error('User not authenticated'));
+      return exportPortfolioToExcel(user.id);
+    },
     onSuccess: (blob) => {
       const timestamp = new Date().toISOString().slice(0, 10);
       saveBlobAsFile(blob, `staffalloc-portfolio-${timestamp}.xlsx`);
     }
   });
 
-  const roleChartData = useMemo(() => {
-    if (!portfolioQuery.data?.fte_by_role) return [];
-    return Object.entries(portfolioQuery.data.fte_by_role).map(([role, value]) => ({
-      role,
-      utilization: value
-    }));
-  }, [portfolioQuery.data?.fte_by_role]);
-
   const overAllocated = portfolioQuery.data?.over_allocated_employees ?? [];
   const benchEmployees = portfolioQuery.data?.bench_employees ?? [];
-
   const utilizationPct = portfolioQuery.data?.overall_utilization_pct ?? 0;
 
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Portfolio Dashboard"
-        description="Org-wide health, utilization, and staffing outlook."
+        title="Dashboard"
+        description="Staffing Overview"
         action={
           <button
             type="button"
@@ -121,83 +113,61 @@ export default function PortfolioDashboard() {
             />
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <section className="mt-6">
+            {user?.id && <ManagerAllocationGrid managerId={user.id} />}
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
             <Card
-              title="FTE by Role"
-              description="Role mix derived from projects and assignments. Targets align with executive staffing forecasts."
+              title="Over-allocated"
+              description="Employees above 100% FTE across all projects."
             >
-              {roleChartData.length === 0 ? (
-                <p className="text-sm text-slate-500">FTE data by role is not yet available.</p>
+              {overAllocated.length === 0 ? (
+                <p className="text-sm text-slate-500">No over-allocations detected.</p>
               ) : (
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={roleChartData} margin={{ top: 16, right: 16, left: 0, bottom: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200" />
-                      <XAxis dataKey="role" tick={{ fill: '#475569', fontSize: 12 }} />
-                      <YAxis tick={{ fill: '#475569', fontSize: 12 }} />
-                      <Tooltip
-                        formatter={(value: number) => [`${value.toFixed(1)}%`, 'Utilization']}
-                        labelStyle={{ color: '#1e293b', fontWeight: 600 }}
-                      />
-                      <Bar dataKey="utilization" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <ul className="space-y-3 text-sm text-slate-600">
+                  {overAllocated.map((employee) => (
+                    <li key={employee.user_id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-slate-800">{employee.full_name}</p>
+                        <span className="text-xs font-semibold text-red-600">
+                          {employee.fte_percentage.toFixed(1)}% FTE
+                        </span>
+                      </div>
+                      {employee.projects && employee.projects.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                          {employee.projects.map((project) => (
+                            <li key={project.project_id}>
+                              {project.project_name} · {project.allocated_hours} hrs
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card>
 
-            <div className="space-y-6">
-              <Card
-                title="Over-allocated"
-                description="Employees above 100% FTE across all projects."
-              >
-                {overAllocated.length === 0 ? (
-                  <p className="text-sm text-slate-500">No over-allocations detected.</p>
-                ) : (
-                  <ul className="space-y-3 text-sm text-slate-600">
-                    {overAllocated.map((employee) => (
-                      <li key={employee.user_id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-slate-800">{employee.full_name}</p>
-                          <span className="text-xs font-semibold text-red-600">
-                            {employee.fte_percentage.toFixed(1)}% FTE
-                          </span>
-                        </div>
-                        {employee.projects && employee.projects.length > 0 && (
-                          <ul className="mt-2 space-y-1 text-xs text-slate-500">
-                            {employee.projects.map((project) => (
-                              <li key={project.project_id}>
-                                {project.project_name} · {project.allocated_hours} hrs
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-
-              <Card
-                title="Bench Spotlight"
-                description="Under 25% FTE availability to redeploy."
-              >
-                {benchEmployees.length === 0 ? (
-                  <p className="text-sm text-slate-500">No bench capacity currently detected.</p>
-                ) : (
-                  <ul className="space-y-2 text-sm text-slate-600">
-                    {benchEmployees.map((employee) => (
-                      <li key={employee.user_id} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
-                        <span>{employee.full_name}</span>
-                        <span className="text-xs font-semibold text-emerald-600">
-                          {employee.fte_percentage.toFixed(1)}% FTE
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            </div>
+            <Card
+              title="Bench Spotlight"
+              description="Under 25% FTE availability to redeploy."
+            >
+              {benchEmployees.length === 0 ? (
+                <p className="text-sm text-slate-500">No bench capacity currently detected.</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-slate-600">
+                  {benchEmployees.map((employee) => (
+                    <li key={employee.user_id} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
+                      <span>{employee.full_name}</span>
+                      <span className="text-xs font-semibold text-emerald-600">
+                        {employee.fte_percentage.toFixed(1)}% FTE
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           </section>
         </>
       )}

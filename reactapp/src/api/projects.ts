@@ -8,23 +8,19 @@ import type {
   ProjectImportResponse,
   ProjectListItem,
   ProjectUpdateInput,
-  ProjectViewer,
-  ProjectViewerCreateInput,
   ProjectWithDetails
 } from '../types/api';
 import { fetchAssignmentAllocations } from './assignments';
 
 export interface ProjectQueryParams {
-  managerId?: number;
-  viewerUserId?: number;
+  managerId: number; // Required for data isolation
 }
 
-export async function fetchProjects(params: ProjectQueryParams = {}): Promise<ProjectListItem[]> {
-  const { managerId, viewerUserId } = params;
+export async function fetchProjects(params: ProjectQueryParams): Promise<ProjectListItem[]> {
+  const { managerId } = params;
   const { data } = await api.get<ProjectListItem[]>('/projects', {
     params: {
-      ...(managerId ? { manager_id: managerId } : {}),
-      ...(viewerUserId ? { viewer_user_id: viewerUserId } : {})
+      manager_id: managerId
     }
   });
   return data;
@@ -91,25 +87,5 @@ export async function updateMonthlyHourOverride(
 
 export async function deleteMonthlyHourOverride(overrideId: number): Promise<void> {
   await api.delete(`/projects/overrides/${overrideId}`);
-}
-
-export async function fetchProjectViewers(projectId: number): Promise<ProjectViewer[]> {
-  const { data } = await api.get<ProjectViewer[]>(`/projects/${projectId}/viewers`);
-  return data;
-}
-
-export async function addProjectViewer(
-  projectId: number,
-  payload: ProjectViewerCreateInput
-): Promise<ProjectViewer> {
-  const { data } = await api.post<ProjectViewer>(`/projects/${projectId}/viewers`, {
-    ...payload,
-    project_id: projectId
-  });
-  return data;
-}
-
-export async function removeProjectViewer(projectId: number, userId: number): Promise<void> {
-  await api.delete(`/projects/${projectId}/viewers/${userId}`);
 }
 

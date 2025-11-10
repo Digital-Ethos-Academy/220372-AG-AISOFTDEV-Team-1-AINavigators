@@ -9,16 +9,14 @@ import type {
 } from '../types/api';
 
 export interface RoleQueryParams {
-  ownerId?: number;
-  includeGlobal?: boolean;
+  ownerId: number; // Required for data isolation
 }
 
-export async function fetchRoles(params: RoleQueryParams = {}): Promise<Role[]> {
-  const { ownerId, includeGlobal } = params;
+export async function fetchRoles(params: RoleQueryParams): Promise<Role[]> {
+  const { ownerId } = params;
   const { data } = await api.get<Role[]>('/admin/roles/', {
     params: {
-      ...(ownerId ? { owner_id: ownerId } : {}),
-      ...(includeGlobal !== undefined ? { include_global: includeGlobal } : {})
+      owner_id: ownerId
     }
   });
   return data;
@@ -39,16 +37,14 @@ export async function deleteRole(roleId: number): Promise<void> {
 }
 
 export interface LCATQueryParams {
-  ownerId?: number;
-  includeGlobal?: boolean;
+  ownerId: number; // Required for data isolation
 }
 
-export async function fetchLCATs(params: LCATQueryParams = {}): Promise<LCAT[]> {
-  const { ownerId, includeGlobal } = params;
+export async function fetchLCATs(params: LCATQueryParams): Promise<LCAT[]> {
+  const { ownerId } = params;
   const { data } = await api.get<LCAT[]>('/admin/lcats/', {
     params: {
-      ...(ownerId ? { owner_id: ownerId } : {}),
-      ...(includeGlobal !== undefined ? { include_global: includeGlobal } : {})
+      owner_id: ownerId
     }
   });
   return data;

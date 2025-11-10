@@ -1,58 +1,58 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Loader2, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react';
 
-import { fetchBalanceSuggestions, fetchConflicts, fetchForecast, recommendStaff } from '../api/ai';
+import { fetchBalanceSuggestions, fetchConflicts, fetchForecast } from '../api/ai';
 import type {
   BalanceSuggestionsResponse,
-  ForecastResponse,
-  StaffingRecommendationResponse
+  ForecastResponse
 } from '../types/api';
 import { Card, KpiTile, SectionHeader } from '../components/common';
+import { ConflictAlerts, ForecastInsights, BalanceSuggestions } from '../components/ai';
+import { useAuth } from '../context/AuthContext';
 
 export default function AIRecommendationsPage() {
-  const [selectedFilter, setSelectedFilter] = useState<'All' | 'Staffing' | 'Conflicts' | 'Forecast' | 'Balance'>(
+  const { user } = useAuth();
+  const [selectedFilter, setSelectedFilter] = useState<'All' | 'Conflicts' | 'Forecast' | 'Balance'>(
     'All'
   );
-
-  const staffingMutation = useMutation({
-    mutationFn: () =>
-      recommendStaff({
-        project_id: 1,
-        role_id: 1,
-        year: new Date().getFullYear(),
-        month: new Date().getMonth() + 1,
-        required_hours: 160
-      })
-  });
+  const [forecastMonths, setForecastMonths] = useState<number>(3);
 
   const conflictsQuery = useQuery({
-    queryKey: ['ai-conflicts'],
-    queryFn: fetchConflicts
+    queryKey: ['ai-conflicts', user?.id],
+    queryFn: () => fetchConflicts(user?.id),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
+  // Always fetch 12 months of forecast data, then slice based on selected view
   const forecastQuery = useQuery({
-    queryKey: ['ai-forecast'],
-    queryFn: () => fetchForecast(3)
+    queryKey: ['ai-forecast', user?.id],
+    queryFn: () => fetchForecast(12, user?.id),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const balanceQuery = useQuery({
-    queryKey: ['ai-balance'],
-    queryFn: fetchBalanceSuggestions
+    queryKey: ['ai-balance', user?.id],
+    queryFn: () => fetchBalanceSuggestions(undefined, user?.id),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  useEffect(() => {
-    staffingMutation.mutate();
-  }, []);
-
-  const recommendation = staffingMutation.data;
   const conflicts = conflictsQuery.data;
-  const forecast = forecastQuery.data as ForecastResponse | undefined;
+  const forecastFull = forecastQuery.data as ForecastResponse | undefined;
   const balance = balanceQuery.data as BalanceSuggestionsResponse | undefined;
+
+  // Track if any query is currently refreshing
+  const isRefreshing = conflictsQuery.isFetching || forecastQuery.isFetching || balanceQuery.isFetching;
+
+  // Slice forecast predictions based on selected period (no recalculation needed!)
+  const forecast = forecastFull ? {
+    ...forecastFull,
+    forecast_period_months: forecastMonths,
+    predictions: forecastFull.predictions.slice(0, forecastMonths)
+  } : undefined;
 
   const filteredSections = useMemo(() => {
     const sections: { key: string; title: string; type: typeof selectedFilter }[] = [
-      { key: 'staffing', title: 'Staffing Recommendations', type: 'Staffing' },
       { key: 'conflicts', title: 'Conflict Alerts', type: 'Conflicts' },
       { key: 'forecast', title: 'Forecast', type: 'Forecast' },
       { key: 'balance', title: 'Workload Balance', type: 'Balance' }
@@ -72,26 +72,24 @@ export default function AIRecommendationsPage() {
           <button
             type="button"
             onClick={() => {
-              staffingMutation.mutate();
               conflictsQuery.refetch();
               forecastQuery.refetch();
               balanceQuery.refetch();
             }}
-            className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+            disabled={isRefreshing}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-all ${
+              isRefreshing
+                ? 'border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh insights
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh insights'}
           </button>
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <KpiTile
-          label="Staffing Suggestions"
-          value={recommendation?.candidates.length ?? 0}
-          subLabel="Matches based on availability and skills"
-          icon={<Sparkles className="h-5 w-5 text-blue-500" />}
-        />
+      <section className="grid gap-4 md:grid-cols-3">
         <KpiTile
           label="Conflicts Detected"
           value={conflicts?.conflicts?.length ?? 0}
@@ -114,7 +112,7 @@ export default function AIRecommendationsPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          {['All', 'Staffing', 'Conflicts', 'Forecast', 'Balance'].map((filter) => (
+          {['All', 'Conflicts', 'Forecast', 'Balance'].map((filter) => (
             <button
               key={filter}
               type="button"
@@ -133,45 +131,6 @@ export default function AIRecommendationsPage() {
 
       {filteredSections.map((section) => {
         switch (section.key) {
-          case 'staffing':
-            return (
-              <Card
-                key={section.key}
-                title="Recommended Staffing Actions"
-                description="The AI evaluates availability, skills, and allocation caps to propose staffing solutions."
-              >
-                {staffingMutation.isPending ? (
-                  <p className="text-sm text-slate-500">Analyzing staffing data…</p>
-                ) : recommendation && recommendation.candidates.length > 0 ? (
-                  <ul className="space-y-3 text-sm text-slate-600">
-                    {recommendation.candidates.map((candidate, index) => (
-                      <li key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-slate-800">{candidate.full_name ?? 'Candidate'}</p>
-                          <span className="text-xs font-semibold text-blue-600">
-                            {Math.round((candidate.current_fte ?? 0) * 100)}% FTE
-                          </span>
-                        </div>
-                        {candidate.skills && candidate.skills.length > 0 && (
-                          <p className="mt-1 text-xs text-slate-500">Skills: {candidate.skills.join(', ')}</p>
-                        )}
-                        {candidate.reasoning && (
-                          <p className="mt-2 text-xs text-slate-500">{candidate.reasoning}</p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No staffing matches yet. Provide project details to unlock targeted recommendations.
-                  </p>
-                )}
-                {recommendation && (
-                  <p className="mt-4 text-xs text-slate-400">Reasoning: {recommendation.reasoning}</p>
-                )}
-              </Card>
-            );
-
           case 'conflicts':
             return (
               <Card
@@ -180,17 +139,12 @@ export default function AIRecommendationsPage() {
                 description="Identify over-allocations and proposed resolutions."
               >
                 {conflictsQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">Scanning for conflicts…</p>
-                ) : conflicts?.conflicts && conflicts.conflicts.length > 0 ? (
-                  <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
-                    {JSON.stringify(conflicts.conflicts, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No over-allocations detected. Keep monitoring as plans evolve.
-                  </p>
-                )}
-                {conflicts?.message && <p className="mt-3 text-xs text-slate-400">{conflicts.message}</p>}
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  </div>
+                ) : conflicts?.conflicts ? (
+                  <ConflictAlerts conflicts={conflicts.conflicts} />
+                ) : null}
               </Card>
             );
 
@@ -201,18 +155,28 @@ export default function AIRecommendationsPage() {
                 title="Forecast Insights"
                 description="Projection of staffing surpluses and shortages based on planned projects."
               >
+                <div className="mb-4 flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className="font-medium">Forecast Period:</span>
+                    <select
+                      value={forecastMonths}
+                      onChange={(e) => setForecastMonths(Number(e.target.value))}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-slate-700 hover:border-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value={3}>3 months</option>
+                      <option value={6}>6 months</option>
+                      <option value={9}>9 months</option>
+                      <option value={12}>12 months</option>
+                    </select>
+                  </label>
+                </div>
                 {forecastQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">Generating forecast…</p>
-                ) : forecast ? (
-                  <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
-                    {JSON.stringify(forecast.predictions, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    Forecasting data unavailable. Ensure upcoming pipeline entries are synced.
-                  </p>
-                )}
-                {forecast?.message && <p className="mt-3 text-xs text-slate-400">{forecast.message}</p>}
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  </div>
+                ) : forecast?.predictions ? (
+                  <ForecastInsights predictions={forecast.predictions} />
+                ) : null}
               </Card>
             );
 
@@ -224,17 +188,12 @@ export default function AIRecommendationsPage() {
                 description="Recommendations to redistribute work and prevent burnout."
               >
                 {balanceQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">Reviewing workload patterns…</p>
-                ) : balance?.suggestions && balance.suggestions.length > 0 ? (
-                  <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
-                    {JSON.stringify(balance.suggestions, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No balancing opportunities detected. Re-run after new allocations are captured.
-                  </p>
-                )}
-                {balance?.message && <p className="mt-3 text-xs text-slate-400">{balance.message}</p>}
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  </div>
+                ) : balance?.suggestions ? (
+                  <BalanceSuggestions suggestions={balance.suggestions} />
+                ) : null}
               </Card>
             );
 

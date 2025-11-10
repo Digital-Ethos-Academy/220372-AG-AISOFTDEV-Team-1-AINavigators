@@ -67,27 +67,23 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.get(
     "/",
     response_model=List[schemas.UserResponse],
-    summary="Get a list of all employees",
+    summary="Get a list of employees for a specific manager",
 )
 def read_users(
+    manager_id: Optional[int] = Query(None, description="Manager ID for data isolation (optional)"),
     skip: int = 0,
     limit: int = Query(default=100, lte=200),
-    manager_id: Optional[int] = Query(
-        None, description="Filter employees by owning manager ID"
-    ),
     system_role: Optional[SystemRole] = Query(
         None, description="Filter by system role"
-    ),
-    include_global: bool = Query(
-        False,
-        description="When filtering by manager, include non-employee global accounts",
     ),
     db: Session = Depends(get_db),
 ):
     """
-    Retrieve a list of users/employees with pagination.
+    Retrieve a list of users/employees.
+    - **manager_id**: Optional manager ID for filtering. If provided, only returns employees owned by that manager. If None, returns all employees (for admins/global views).
     - **skip**: Number of records to skip.
     - **limit**: Maximum number of records to return (max 200).
+    - **system_role**: Optional filter by system role.
     """
     users = crud.get_users(
         db,
@@ -95,7 +91,6 @@ def read_users(
         limit=limit,
         manager_id=manager_id,
         system_role=system_role,
-        include_global=include_global,
     )
     return users
 

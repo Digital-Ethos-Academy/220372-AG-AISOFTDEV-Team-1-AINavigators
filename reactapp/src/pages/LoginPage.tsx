@@ -10,7 +10,7 @@ import type { SystemRole, UserCreateInput } from '../types/api';
 
 type Mode = 'signin' | 'signup';
 
-const allowedSignupRoles: SystemRole[] = ['PM', 'Director'];
+const allowedSignupRoles: SystemRole[] = ['PM'];
 
 const exampleManagerAccount = {
   email: 'sarah.martinez@example.com',
@@ -89,9 +89,9 @@ export default function LoginPage() {
 
   const headerDescription = useMemo(() => {
     if (mode === 'signin') {
-      return 'Managers and directors can monitor their assigned projects and teams.';
+      return 'Managers can monitor their assigned projects and teams.';
     }
-    return 'Request portfolio access for staffing work. New accounts launch with PM or Director permissions.';
+    return 'Request portfolio access for staffing work. New accounts launch with PM permissions.';
   }, [mode]);
 
   return (
@@ -235,7 +235,7 @@ export default function LoginPage() {
                 >
                   {allowedSignupRoles.map((role) => (
                     <option key={role} value={role}>
-                      {role === 'PM' ? 'Project Manager' : 'Director'}
+                      Project Manager
                     </option>
                   ))}
                 </select>

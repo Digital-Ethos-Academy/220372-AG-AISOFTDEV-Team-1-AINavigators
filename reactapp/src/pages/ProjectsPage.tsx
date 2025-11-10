@@ -20,13 +20,12 @@ export default function ProjectsPage() {
   const [isImporting, setImporting] = useState(false);
 
   const { data: projects = [], isLoading, isError, error } = useQuery({
-    queryKey: ['projects', user?.id ?? 'all'],
-    queryFn: () =>
-      fetchProjects(
-        user?.system_role === 'PM'
-          ? { managerId: user.id }
-          : {}
-      )
+    queryKey: ['projects', user?.id],
+    queryFn: () => {
+      if (!user?.id) return Promise.resolve([]);
+      return fetchProjects({ managerId: user.id });
+    },
+    enabled: !!user?.id
   });
 
   const {
@@ -119,7 +118,7 @@ export default function ProjectsPage() {
         <>
           {user?.system_role === 'PM' && visibleProjects.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-500">
-              You are not assigned to any projects yet. Ask your director to add you as the project manager.
+              You are not assigned to any projects yet. Ask your administrator to add you as the project manager.
             </div>
           ) : (
             <ProjectTable projects={visibleProjects} />

@@ -6,7 +6,7 @@ export interface UserSummary {
   email: string;
 }
 
-export type SystemRole = 'Admin' | 'Director' | 'PM' | 'Employee';
+export type SystemRole = 'Admin' | 'PM' | 'Employee';
 
 export interface Role {
   id: number;
@@ -273,36 +273,13 @@ export interface UtilizationByRoleResponse {
 export interface ChatQueryRequest {
   query: string;
   context_limit?: number;
+  manager_id?: number;
 }
 
 export interface ChatQueryResponse {
   query: string;
   answer: string;
   sources: string[];
-}
-
-export interface StaffingRecommendationRequestPayload {
-  project_id: number;
-  role_id?: number;
-  lcat_id?: number;
-  year: number;
-  month: number;
-  required_hours: number;
-}
-
-export interface StaffingRecommendationCandidate {
-  user_id: number;
-  full_name: string;
-  email?: string;
-  manager_id?: number | null;
-  current_fte: number;
-  allocated_hours: number;
-  available_hours: number;
-}
-
-export interface StaffingRecommendationResponse {
-  candidates: StaffingRecommendationCandidate[];
-  reasoning: string;
 }
 
 export interface ConflictProjectBreakdown {
@@ -339,11 +316,28 @@ export interface ForecastResponse {
   message: string;
 }
 
+export interface ProjectInfo {
+  project_id: number;
+  project_name: string;
+  assignment_id: number;
+}
+
 export interface BalanceSuggestion {
   action: string;
   from_employee?: string;
+  from_employee_id?: number;
+  from_employee_current_fte?: number;
+  from_employee_current_hours?: number;
+  from_employee_projects?: ProjectInfo[];
   to_employee?: string;
+  to_employee_id?: number;
+  to_employee_current_fte?: number;
+  to_employee_current_hours?: number;
+  to_employee_projects?: ProjectInfo[];
   recommended_hours: number;
+  project_name?: string;
+  project_id?: number;
+  reasoning?: string;
 }
 
 export interface BalanceSuggestionsResponse {
@@ -354,20 +348,5 @@ export interface BalanceSuggestionsResponse {
 export interface ReindexResponse {
   status: string;
   message: string;
-}
-
-export interface ProjectViewer {
-  id: number;
-  project_id: number;
-  user_id: number;
-  granted_by_id?: number | null;
-  created_at: string;
-  user: UserSummary;
-}
-
-export interface ProjectViewerCreateInput {
-  project_id: number;
-  user_id: number;
-  granted_by_id?: number | null;
 }
 

@@ -31,7 +31,6 @@ class Base(DeclarativeBase):
 
 class SystemRole(str, enum.Enum):
     ADMIN = "Admin"
-    DIRECTOR = "Director"
     PM = "PM"
     EMPLOYEE = "Employee"
 
@@ -127,17 +126,6 @@ class User(Base):
         "LCAT",
         back_populates="owner",
         foreign_keys="LCAT.owner_id",
-    )
-    granted_project_views: Mapped[List["ProjectViewer"]] = relationship(
-        "ProjectViewer",
-        back_populates="granted_by",
-        foreign_keys="ProjectViewer.granted_by_id",
-    )
-    viewable_project_links: Mapped[List["ProjectViewer"]] = relationship(
-        "ProjectViewer",
-        back_populates="user",
-        foreign_keys="ProjectViewer.user_id",
-        passive_deletes=True,
     )
 
     def __repr__(self) -> str:
@@ -258,12 +246,6 @@ class Project(Base):
     )
     monthly_hour_overrides: Mapped[List["MonthlyHourOverride"]] = relationship(
         "MonthlyHourOverride",
-        back_populates="project",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    viewer_links: Mapped[List["ProjectViewer"]] = relationship(
-        "ProjectViewer",
         back_populates="project",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -406,61 +388,6 @@ class MonthlyHourOverride(Base):
 
     def __repr__(self) -> str:
         return f"<MonthlyHourOverride(id={self.id}, project_id={self.project_id}, date={self.year}-{self.month:02d}, hours={self.overridden_hours})>"
-
-
-# --------------------------------------------------------------------------------
-# PROJECT SHARING TABLES
-# --------------------------------------------------------------------------------
-
-
-class ProjectViewer(Base):
-    """Associates additional users who can view a project without edit rights."""
-
-    __tablename__ = "project_viewers"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    user_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    granted_by_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
-
-    project: Mapped["Project"] = relationship("Project", back_populates="viewer_links")
-    user: Mapped["User"] = relationship(
-        "User",
-        back_populates="viewable_project_links",
-        foreign_keys=[user_id],
-    )
-    granted_by: Mapped[Optional["User"]] = relationship(
-        "User",
-        back_populates="granted_project_views",
-        foreign_keys=[granted_by_id],
-    )
-
-    __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="uq_project_viewers_project_user"),
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<ProjectViewer(id={self.id}, project_id={self.project_id}, user_id={self.user_id})>"
-        )
 
 
 # --------------------------------------------------------------------------------
