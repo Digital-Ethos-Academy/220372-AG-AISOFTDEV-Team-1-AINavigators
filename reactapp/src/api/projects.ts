@@ -89,3 +89,7 @@ export async function deleteMonthlyHourOverride(overrideId: number): Promise<voi
   await api.delete(`/projects/overrides/${overrideId}`);
 }
 
+export async function deleteProject(projectId: number): Promise<void> {
+  await api.delete(`/projects/${projectId}`);
+}
+

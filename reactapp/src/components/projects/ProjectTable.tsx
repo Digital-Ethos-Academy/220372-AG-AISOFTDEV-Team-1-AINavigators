@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
-import { CalendarIcon, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { Menu, Transition } from '@headlessui/react';
+import { Fragment } from 'react';
+import { CalendarIcon, ChevronRight, MoreHorizontal, Trash2 } from 'lucide-react';
 import type { ProjectListItem } from '../../types/api';
 
 function StatusBadge({ status }: { status: ProjectListItem['status'] }) {
@@ -20,9 +22,10 @@ function StatusBadge({ status }: { status: ProjectListItem['status'] }) {
 
 interface ProjectTableProps {
   projects: ProjectListItem[];
+  onDeleteProject: (project: ProjectListItem) => void;
 }
 
-export default function ProjectTable({ projects }: ProjectTableProps) {
+export default function ProjectTable({ projects, onDeleteProject }: ProjectTableProps) {
   if (projects.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
@@ -84,20 +87,50 @@ export default function ProjectTable({ projects }: ProjectTableProps) {
                 <StatusBadge status={project.status} />
               </td>
               <td className="px-6 py-4 text-right text-sm">
-                <Link
-                  to={`/projects/${project.id}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:text-blue-600"
-                >
-                  View
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
-                <button
-                  type="button"
-                  className="ml-2 inline-flex items-center rounded-md border border-transparent px-2 py-1 text-slate-400 hover:text-slate-600"
-                  aria-label={`More options for ${project.name}`}
-                >
-                  <MoreHorizontal className="h-5 w-5" />
-                </button>
+                <div className="flex items-center justify-end gap-2">
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:text-blue-600"
+                  >
+                    View
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                  <Menu as="div" className="relative">
+                    <Menu.Button
+                      className="inline-flex items-center rounded-md border border-transparent px-2 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      aria-label={`More options for ${project.name}`}
+                    >
+                      <MoreHorizontal className="h-5 w-5" />
+                    </Menu.Button>
+                    <Transition
+                      as={Fragment}
+                      enter="transition ease-out duration-100"
+                      enterFrom="transform opacity-0 scale-95"
+                      enterTo="transform opacity-100 scale-100"
+                      leave="transition ease-in duration-75"
+                      leaveFrom="transform opacity-100 scale-100"
+                      leaveTo="transform opacity-0 scale-95"
+                    >
+                      <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-lg border border-slate-200 bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                        <div className="py-1">
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                onClick={() => onDeleteProject(project)}
+                                className={`${
+                                  active ? 'bg-red-50 text-red-700' : 'text-red-600'
+                                } flex w-full items-center gap-2 px-4 py-2 text-sm transition`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete Project
+                              </button>
+                            )}
+                          </Menu.Item>
+                        </div>
+                      </Menu.Items>
+                    </Transition>
+                  </Menu>
+                </div>
               </td>
             </tr>
           ))}

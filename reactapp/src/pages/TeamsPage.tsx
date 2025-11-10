@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Briefcase, Loader2, Search, Users } from 'lucide-react';
+import { Briefcase, Loader2, Search, Trash2, Users } from 'lucide-react';
 
-import { createEmployee, fetchEmployees } from '../api/users';
+import { createEmployee, deleteEmployee, fetchEmployees } from '../api/users';
 import type { EmployeeListItem, SystemRole, UserCreateInput } from '../types/api';
 import { Card, SectionHeader } from '../components/common';
 import { useAuth } from '../context/AuthContext';
 import AddEmployeeModal from '../components/teams/AddEmployeeModal';
+import DeleteEmployeeModal from '../components/teams/DeleteEmployeeModal';
 
 function roleLabel(role: SystemRole) {
   switch (role) {
@@ -54,7 +55,7 @@ function RoleBadge({ role }: { role: SystemRole }) {
   );
 }
 
-function EmployeeCard({ employee }: { employee: EmployeeListItem }) {
+function EmployeeCard({ employee, onDelete }: { employee: EmployeeListItem; onDelete: () => void }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
       <div className="flex items-start justify-between">
@@ -67,19 +68,29 @@ function EmployeeCard({ employee }: { employee: EmployeeListItem }) {
 
       <RoleBadge role={employee.system_role} />
 
-      <div className="mt-auto flex items-center justify-between text-sm">
+      <div className="mt-auto flex items-center justify-between gap-2 text-sm">
         <span className="text-slate-500">
           Last seen{' '}
           {employee.last_login_at
             ? new Date(employee.last_login_at).toLocaleDateString()
             : 'No recent login'}
         </span>
-        <Link
-          to={`/teams/${employee.id}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-blue-600 transition hover:border-blue-300 hover:bg-blue-50"
-        >
-          View timeline
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/teams/${employee.id}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-blue-600 transition hover:border-blue-300 hover:bg-blue-50"
+          >
+            View timeline
+          </Link>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-100"
+            title="Delete employee"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -89,6 +100,8 @@ export default function TeamsPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<SystemRole | 'All'>('All');
   const [isAddEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const [isDeleteEmployeeOpen, setDeleteEmployeeOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<EmployeeListItem | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -111,6 +124,31 @@ export default function TeamsPage() {
       setAddEmployeeOpen(false);
     }
   });
+
+  const deleteEmployeeMutation = useMutation({
+    mutationFn: (employeeId: number) => deleteEmployee(employeeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setDeleteEmployeeOpen(false);
+      setEmployeeToDelete(null);
+    }
+  });
+
+  const handleDeleteClick = (employee: EmployeeListItem) => {
+    setEmployeeToDelete(employee);
+    setDeleteEmployeeOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (employeeToDelete) {
+      deleteEmployeeMutation.mutate(employeeToDelete.id);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteEmployeeOpen(false);
+    setEmployeeToDelete(null);
+  };
 
   const uniqueRoles = useMemo<SystemRole[]>(() => {
     const roles = new Set<SystemRole>();
@@ -252,7 +290,7 @@ export default function TeamsPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredEmployees.map((employee) => (
-                <EmployeeCard key={employee.id} employee={employee} />
+                <EmployeeCard key={employee.id} employee={employee} onDelete={() => handleDeleteClick(employee)} />
               ))}
             </div>
           )}
@@ -269,6 +307,14 @@ export default function TeamsPage() {
           onClose={() => setAddEmployeeOpen(false)}
         />
       )}
+
+      <DeleteEmployeeModal
+        open={isDeleteEmployeeOpen}
+        employee={employeeToDelete}
+        submitting={deleteEmployeeMutation.isPending}
+        onConfirm={handleDeleteConfirm}
+        onClose={handleDeleteCancel}
+      />
     </div>
   );
 }

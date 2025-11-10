@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 
-import { createProject, fetchProjects, importProjectsFromExcel } from '../api/projects';
+import { createProject, deleteProject, fetchProjects, importProjectsFromExcel } from '../api/projects';
 import ImportProjectsModal from '../components/projects/ImportProjectsModal';
 import CreateProjectModal from '../components/projects/CreateProjectModal';
+import DeleteProjectModal from '../components/projects/DeleteProjectModal';
 import ProjectTable from '../components/projects/ProjectTable';
 import { useAuth } from '../context/AuthContext';
-import type { ProjectCreateInput } from '../types/api';
+import type { ProjectCreateInput, ProjectListItem } from '../types/api';
 
 export default function ProjectsPage() {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ export default function ProjectsPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<{ created: number; skipped: number } | null>(null);
   const [isImporting, setImporting] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<ProjectListItem | null>(null);
 
   const { data: projects = [], isLoading, isError, error } = useQuery({
     queryKey: ['projects', user?.id],
@@ -37,6 +39,17 @@ export default function ProjectsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setModalOpen(false);
+    }
+  });
+
+  const {
+    mutate: handleDeleteProject,
+    isPending: isDeleting
+  } = useMutation({
+    mutationFn: (projectId: number) => deleteProject(projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setDeletingProject(null);
     }
   });
 
@@ -121,7 +134,10 @@ export default function ProjectsPage() {
               You are not assigned to any projects yet. Ask your administrator to add you as the project manager.
             </div>
           ) : (
-            <ProjectTable projects={visibleProjects} />
+            <ProjectTable 
+              projects={visibleProjects} 
+              onDeleteProject={(project) => setDeletingProject(project)}
+            />
           )}
         </>
       )}
@@ -177,6 +193,18 @@ export default function ProjectsPage() {
           )}
         </div>
       )}
+
+      <DeleteProjectModal
+        open={!!deletingProject}
+        projectName={deletingProject?.name ?? ''}
+        submitting={isDeleting}
+        onConfirm={() => {
+          if (deletingProject) {
+            handleDeleteProject(deletingProject.id);
+          }
+        }}
+        onClose={() => setDeletingProject(null)}
+      />
     </div>
   );
 }

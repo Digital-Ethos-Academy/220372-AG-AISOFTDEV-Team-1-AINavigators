@@ -41,3 +41,7 @@ export async function fetchUserAllocationSummary(
   return data;
 }
 
+export async function deleteEmployee(employeeId: number): Promise<void> {
+  await api.delete(`/employees/${employeeId}`);
+}
+
