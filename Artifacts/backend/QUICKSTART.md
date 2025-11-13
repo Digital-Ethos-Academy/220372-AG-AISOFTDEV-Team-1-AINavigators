@@ -1,6 +1,8 @@
 # StaffAlloc Backend - Quick Start Guide
 
-This guide will help you get the StaffAlloc backend up and running in minutes.
+This guide provides backend-specific details for the StaffAlloc API server.
+
+> **📘 New to this project?** For complete setup instructions including both frontend and backend, see the main **[QUICKSTART.md](../../QUICKSTART.md)** in the project root.
 
 ---
 
@@ -23,24 +25,30 @@ cd Artifacts/backend
 ### 2. Install Python Dependencies
 
 ```bash
-pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson
+pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings \
+    "python-jose[cryptography]" "passlib[bcrypt]" structlog httpx ujson \
+    email-validator python-multipart
 ```
 
 Or if you prefer using a virtual environment (recommended):
 
 ```bash
-# Create virtual environment
-python -m venv venv
+# Create virtual environment (from project root)
+python -m venv ../../venv
 
 # Activate it
 # On Windows:
-venv\Scripts\activate
+..\..\venv\Scripts\activate
 # On macOS/Linux:
-source venv/bin/activate
+source ../../venv/bin/activate
 
 # Install dependencies
-pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] structlog httpx ujson
+pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings \
+    "python-jose[cryptography]" "passlib[bcrypt]" structlog httpx ujson \
+    email-validator python-multipart
 ```
+
+**Note:** `email-validator` is required by Pydantic for email field validation, and `python-multipart` is required for FastAPI to parse OAuth2 form data.
 
 ### 3. Create Data Directory
 
@@ -48,26 +56,34 @@ pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-jose[cr
 mkdir -p data
 ```
 
-### 4. Initialize Database
+### 4. Initialize Database with Seed Data
 
-Run this Python command to create all tables:
+The easiest way to set up the database is to run the comprehensive seed script, which creates all tables and populates them with demo data:
+
+```bash
+python seed_data_comprehensive.py
+```
+
+This will create:
+- 27 users (2 admins, 2 directors, 3 PMs, 20 employees)
+- 20 roles (Software Engineer, QA Engineer, Project Manager, etc.)
+- 8 LCATs (Level 1-5, Senior, Principal, Distinguished)
+- 11 projects with realistic timelines
+- 55+ project assignments
+- 130+ monthly allocations
+- 6 monthly hour overrides
+- 5 AI recommendations
+- 5 audit log entries
+
+**Default Admin Credentials:**
+- Email: `admin@staffalloc.com`
+- Password: `admin123`
+
+**Alternative:** If you want an empty database without seed data:
 
 ```bash
 python -c "from app.db.session import create_db_and_tables; create_db_and_tables()"
 ```
-
-### 5. (Optional) Load Seed Data
-
-To populate the database with roles, LCATs, and a default admin user:
-
-```bash
-sqlite3 data/staffalloc.db < ../schema.sql
-```
-
-This will create:
-- 6 default roles (Project Manager, SW Engineer, QA Engineer, etc.)
-- 4 default LCATs (Level 1-3, Principal)
-- 1 admin user (email: `admin@staffalloc.com`, password: `admin123`)
 
 ---
 

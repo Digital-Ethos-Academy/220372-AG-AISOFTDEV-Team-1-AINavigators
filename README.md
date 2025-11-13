@@ -4,6 +4,14 @@ Welcome to the final project for the AI-Driven Software Engineering Program! Thi
 
 ---
 
+## 🚀 Quick Start
+
+**New to this project?** See **[QUICKSTART.md](./QUICKSTART.md)** for complete setup instructions (frontend + backend).
+
+**Already set up?** See **[RUN.md](./RUN.md)** for quick commands to start the servers.
+
+---
+
 ## 🎯 Project Goal
 
 The primary goal of this capstone is to **build and present a working prototype of a software application, demonstrating the integration of Generative AI at every phase of the SDLC**. You will act as a full-stack developer, using AI as your co-pilot for planning, architecture, coding, testing, and documentation.
